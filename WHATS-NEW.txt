@@ -1,0 +1,107 @@
+NORTHFIELD MILLS: PORTAL + FAVICON UPDATE
+
+IF THE PORTAL SAYS "THE PORTAL'S SERVER ISN'T ON THE LIVE SITE"
+- The api function (netlify/functions/api.mjs) wasn't deployed. Netlify → Deploys →
+  open the latest deploy → Functions should list: api, access, gmail, gmail-callback,
+  submission-created. If api is missing: put your netlify/functions/api.mjs (and
+  netlify/lib/) back in the GitHub repo and push. Don't use drag-and-drop.
+
+HOW TO DEPLOY
+1. Copy everything in this folder into your GitHub repo, replacing the old files.
+2. KEEP your existing netlify/functions/ and netlify/lib/ folders. Do not delete them.
+   This zip adds ONE new file to your functions folder: netlify/functions/access.mjs
+   (it saves what each staff member can open, and who has signed in). It doesn't
+   replace any of your files.
+3. Commit and push. Netlify deploys automatically. Don't use drag-and-drop:
+   it skips the functions.
+4. Sign in to the portal as an admin and open Accounts → System check.
+   Every line should be green. A red line says exactly what to fix.
+
+WHAT WAS BROKEN
+- Conversations, Email list, Gmail count: one line in the page referred to a stat
+  box that no longer existed, so everything after it stopped drawing. Fixed.
+- Favicon: assets/favicon.webp was really a JPEG, and 404.html asked for
+  "Favicon.webp" (capital F), which Netlify can't find. Replaced with a proper icon
+  set at the site root (favicon.ico, icons/, apple-touch-icon.png).
+
+- Tabs jumping back to Overview: the sidebar could be clicked before the portal
+  had finished checking who you are, and admin tabs then bounced to Overview.
+  If /api/me was slow or failed, it stayed stuck that way. Now the sidebar is
+  locked until your access is confirmed. The portal retries up to 3 times, and
+  if the server really fails it shows the error with a Try again button.
+
+ACCESS CHANGES
+- Staff can now open Conversations (contact form messages).
+  NOTE: your /api function decides what data staff receive. If staff see
+  Conversations but it's always empty, api.mjs is only sending messages to admins.
+  Send me netlify/functions/api.mjs and I'll change that.
+- Gmail Inbox and Email list stay admin-only. Staff see them with a lock. Opening
+  one shows "You don't have access" with a "Request access from an admin" button.
+  The request arrives as a ticket ("Access request: Gmail Inbox") that admins see
+  in Tickets. To approve, change the person to Admin in Accounts and resolve the ticket.
+
+ACCESS + STATUS (NEW)
+- Admins choose what each staff member can open: Tickets, Conversations, Leads,
+  Gmail Inbox, Email list. In Accounts, click "3 of 5 areas" in their row. Changes
+  save right away, and staff pick them up within a minute. Admins always have everything.
+- Staff asking for access: "Give access" turns on just the area they asked for
+  (instead of making them an admin).
+- Status is automatic: "Invited" until someone signs in for the first time, then
+  "Active". Admins can also set "On leave" or "Deactivated" (which blocks them).
+- Reloading the page keeps you in the Team Portal. Going back to the website
+  (the "Back to website" link, the logo, or the browser Back button) signs you out,
+  so you sign in again next time.
+- NOTE: Gmail and the Email list come from your server. If a staff member you gave
+  access sees an "only admins" message there, gmail.mjs / api.mjs need a small
+  update. Send them to me.
+
+ACCOUNTS PAGE (REDESIGNED)
+- Your account is the main thing at the top: name, job title, email, Admin/Staff,
+  Change password, Sign out, and what you can open (locked areas let staff ask for access).
+- Below it, "Who has access": one list of everyone, with filters (Everyone / Admins /
+  Staff / Deactivated) and search. Admins change access and deactivate right in the list.
+- Access requests only show up when someone is waiting, inside that list, with
+  Approve / Decline. Staff "request access" tickets appear there too: "Make admin"
+  upgrades them and closes the ticket.
+- System status is a small button at the top (green, amber or red dot) that opens a pop-up.
+
+GMAIL, CONTACTS AND LEADS (NEW)
+- Gmail has all of Gmail's folders: Inbox, Starred, Snoozed, Important, Sent,
+  Drafts, Scheduled, All mail, Spam, Trash. The Inbox has Gmail's tabs: Primary,
+  Promotions, Social, Updates, Forums. There's also an "Unread only" filter.
+- Gmail stays in sync on its own. Every 45 seconds, and when you come back to the
+  browser tab, new mail appears and mail deleted in Gmail disappears.
+- Contacts (button at the top of Gmail): people who emailed you or you wrote to are
+  suggested. Newsletters, no-reply addresses and Northfield Mills addresses are
+  skipped. Accept reads their email signature and fills in name, job title, company,
+  phone and website for you to check. Decline hides them (restore anytime).
+  You can also save a contact straight from any open email.
+- Leads have a Job title and a Phone field, and both are in the CSV export.
+- Each lead has an "Email activity" tab showing your emails with that person.
+  New emails are logged in the lead's history automatically:
+    their email            -> Response received (sequence paused)
+    your first email       -> Initial outreach (Follow-up #1 scheduled)
+    later emails, no reply -> Follow-up #1, #2, then Final
+    your reply to them     -> Reply sent
+  Nothing is ever logged twice, and your hand-logged history is kept.
+- Leads and contacts are saved in the browser you use (same as before), so export
+  a CSV now and then as a backup.
+
+NOTE FOR YOUR gmail FUNCTION (gmail.mjs)
+- Folders and tabs work by passing Gmail search words in "q" (for example
+  "in:inbox category:promotions"). Your function already passes q through.
+- Spam and Trash also send includeSpamTrash=true. If those two stay empty on the
+  live site, gmail.mjs needs to pass that setting on to Google. Send me the file
+  and I'll add it.
+
+WHAT'S NEW IN THE PORTAL
+- A reload keeps you on the same tab.
+- Gmail: folders, search, load more, exact unread count, reply in Gmail,
+  and turn an email into a ticket or a lead.
+- Email list: filters by where people signed up, search, sort, merged repeat
+  sign-ups, and CSV export that works on the live site.
+- Accounts redesigned; Admin/Owner roles are recognized however /api/me spells them.
+- System check (Accounts) plus a warning banner on Overview when something needs setup.
+- Overview: lead follow-ups due in the next 3 business days.
+- Leads CSV export. Press "/" to jump to search.
+- Works on phones, with no sideways scrolling.

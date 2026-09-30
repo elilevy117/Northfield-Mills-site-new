@@ -1,0 +1,6 @@
+# Clean page addresses (served by the single-page site)
+/privacy   /index.html   200
+/terms     /index.html   200
+/contact   /index.html   200
+/login     /index.html   200
+/portal    /index.html   200

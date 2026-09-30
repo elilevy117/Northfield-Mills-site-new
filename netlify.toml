@@ -1,0 +1,9 @@
+# Northfield Mills — Netlify configuration
+[build]
+  publish = "public"              # the website itself
+  functions = "netlify/functions" # server code: /api (team portal) and form-to-database copy
+
+[functions]
+  node_bundler = "esbuild"
+
+# Page addresses, security headers, and caching are in public/_redirects and public/_headers.

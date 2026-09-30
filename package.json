@@ -1,0 +1,14 @@
+{
+  "name": "northfield-mills-site",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.12.2"
+  },
+  "dependencies": {
+    "@netlify/database": "latest",
+    "@netlify/functions": "latest",
+    "@netlify/identity": "^1.2.0",
+    "@netlify/blobs": "latest"
+  }
+}
