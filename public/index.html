@@ -12337,6 +12337,13 @@
             }
             const j = await r.json().catch(() => ({}));
             if (!r.ok) {
+                // the updated gmail.mjs explains itself: a bad address, or Gmail needs reconnecting to allow sending
+                if (j.code === 'input' || j.code === 'scope' || j.code === 'reconnect') {
+                    const e = new Error(j.error || 'Gmail didn’t send it.');
+                    e.code = j.code;
+                    e.status = r.status;
+                    throw e;
+                }
                 if ([400, 404, 405, 501].includes(r.status) || /unknown|unsupported|not supported|scope|insufficient|permission/i.test(j.error || ''))
                     throw nosend('This site’s Gmail connection can read mail but can’t send it yet.');
                 const e = new Error(j.error || 'Gmail didn’t send it.');
@@ -12346,6 +12353,7 @@
             // a server without a send action may still answer 200 with mail data: only trust an explicit "sent"
             if (!(j.sent || j.id || j.messageId || j.ok === true))
                 throw nosend('This site’s Gmail connection can read mail but can’t send it yet.');
+            FU.noSend = false;
             return j;
         }
         function markFuPending(id, via) {
@@ -12712,6 +12720,10 @@
                 } catch (e) {
                     if (e.code === 'nosend') {
                         FU.noSend = true;
+                        break;
+                    }
+                    if (e.code === 'scope' || e.code === 'reconnect') {
+                        toast(e.message);
                         break;
                     }
                     failed++;
