@@ -5335,6 +5335,25 @@
 
     .from-sel {
         width: 100%
+    }
+
+    .sig-box {
+        margin: -4px 0 12px
+    }
+
+    .sig-box .check {
+        margin: 0 0 6px;
+        font-size: 13.5px
+    }
+
+    .sig-prev {
+        white-space: pre-line;
+        font-size: 13px;
+        color: var(--muted);
+        border-left: 3px solid #eadfcb;
+        padding: 4px 0 4px 12px;
+        max-height: 140px;
+        overflow: auto
     }/* ---------- ChatGPT progress ---------- */
 
     .ai-prog {
@@ -7019,6 +7038,13 @@
                     <span>Message</span>
                     <textarea id="fuBody" rows="9"></textarea>
                 </label>
+                <div class="sig-box" id="fuSigBox" hidden>
+                    <label class="check">
+                        <input type="checkbox" id="fuSig" checked>
+                        <span>Add my Gmail signature</span>
+                    </label>
+                    <div class="sig-prev" id="fuSigPrev"></div>
+                </div>
                 <div class="fu-ai">
                     <button class="sbtn" type="button" id="fuAi">Suggest with AI</button>
                     <button class="link" type="button" id="fuTpl">Use my saved email</button>
@@ -7094,6 +7120,13 @@
                     <span>Message</span>
                     <textarea id="cmBody" rows="10"></textarea>
                 </label>
+                <div class="sig-box" id="cmSigBox" hidden>
+                    <label class="check">
+                        <input type="checkbox" id="cmSig" checked>
+                        <span>Add my Gmail signature</span>
+                    </label>
+                    <div class="sig-prev" id="cmSigPrev"></div>
+                </div>
                 <p class="ct-status" id="cmStatus" role="status" aria-live="polite"></p>
                 <div class="nt-actions">
                     <button class="link" type="button" id="cmGmail">Open in Gmail instead</button>
@@ -7107,7 +7140,7 @@
             <form class="pop nt" id="fuTplForm" novalidate role="dialog" aria-modal="true" aria-labelledby="fuTplTitle">
                 <button class="pop-close" type="button" data-close-fu aria-label="Close">×</button>
                 <h2 id="fuTplTitle">Follow-up emails</h2>
-                <p class="lead-idline">Used when there’s no earlier email thread to reply in. You can still edit each one before it’s sent. Fill-ins: {first_name}, {company}, {my_name}.</p>
+                <p class="lead-idline">Used when there’s no earlier email thread to reply in. You can still edit each one before it’s sent. Fill-ins: {first_name}, {company}, {my_name}, {sign_off} (“Best,” plus your name when there’s no Gmail signature).</p>
                 <label class="fld">
                     <span>Which follow-up</span>
                     <select id="fuTplStage">
@@ -12175,15 +12208,15 @@
         const FU_DEFAULT = {
             f1: {
                 subject: 'Following up — Northfield Mills',
-                body: 'Hi {first_name},\n\nI wanted to follow up on my earlier email about working together with {company}. Do you have a few minutes this week to talk?\n\nBest,\n{my_name}\nNorthfield Mills'
+                body: 'Hi {first_name},\n\nI wanted to follow up on my earlier email about working together with {company}. Do you have a few minutes this week to talk?\n\n{sign_off}'
             },
             f2: {
                 subject: 'Checking in — Northfield Mills',
-                body: 'Hi {first_name},\n\nJust bringing this back to the top of your inbox. I’d still like to explore whether {company} could be a fit for us. Would a quick call work?\n\nBest,\n{my_name}\nNorthfield Mills'
+                body: 'Hi {first_name},\n\nJust bringing this back to the top of your inbox. I’d still like to explore whether {company} could be a fit for us. Would a quick call work?\n\n{sign_off}'
             },
             f3: {
                 subject: 'One last follow-up — Northfield Mills',
-                body: 'Hi {first_name},\n\nI don’t want to keep filling your inbox, so this will be my last follow-up for now. If the timing is better later, just reply here and I’ll pick it up.\n\nBest,\n{my_name}\nNorthfield Mills'
+                body: 'Hi {first_name},\n\nI don’t want to keep filling your inbox, so this will be my last follow-up for now. If the timing is better later, just reply here and I’ll pick it up.\n\n{sign_off}'
             }
         };
         const FU_NEXT = {
@@ -12227,10 +12260,14 @@
             const t = todayISO();
             return getLeads().filter(x => x.status !== 'closed' && x.status !== 'responded' && FU_NEXT[x.stage] && x.reminder && x.reminder <= t && EMAIL_RE.test(String(x.email || '').trim()) && !fuPending(x)).sort((a, b) => a.reminder.localeCompare(b.reminder));
         }
-        function fuDraft(x) {
+        // sig: will a Gmail signature be added? (then the email ends at "Best," so the name isn't there twice)
+        function fuDraft(x, sig) {
+            if (sig === undefined)
+                sig = sigOn(preferredFrom(SA.list || []));
             const st = FU_NEXT[x.stage],
-                tpl = fuTemplates()[st];
-            const fill = v => String(v || '').replace(/\{first_name\}/g, String(x.contact || '').trim().split(/\s+/)[0] || 'there').replace(/\{company\}/g, x.company || 'your company').replace(/\{my_name\}/g, myDisplayName() || 'The Northfield Mills team');
+                tpl = fuTemplates()[st],
+                me = myDisplayName() || 'The Northfield Mills team';
+            const fill = v => String(v || '').replace(/\{first_name\}/g, String(x.contact || '').trim().split(/\s+/)[0] || 'there').replace(/\{company\}/g, x.company || 'your company').replace(/\{my_name\}/g, me).replace(/\{sign_off\}/g, sig ? 'Best,' : 'Best,\n' + me + '\nNorthfield Mills');
             // reply in their latest email thread when there is one
             const th = (x.gmailThreads || [])[0];
             return {
@@ -12261,6 +12298,7 @@
                         email: String(a.sendAsEmail || a.email || '').toLowerCase(),
                         name: a.displayName || a.name || '',
                         isDefault: !!(a.isDefault || a.isPrimary),
+                        signature: a.signature || '',
                         ok: a.verificationStatus ? a.verificationStatus === 'accepted' : true
                     })).filter(a => a.email && a.ok);
                 } catch (e) {}
@@ -12284,6 +12322,38 @@
             } catch (e) {}
             return (list.find(a => a.email === saved) || list.find(a => a.isDefault) || list[0] || {}).email || '';
         }
+        // ---------- Gmail signatures (one per Send-as address) ----------
+        const SIG_KEY = 'nm_add_signature';
+        const sigOf = from => ((SA.list || []).find(a => a.email === String(from || '').toLowerCase()) || {}).signature || '';
+        const sigPref = () => {
+            try {
+                return localStorage.getItem(SIG_KEY) !== '0';
+            } catch (e) {
+                return true;
+            }
+        };
+        const sigOn = from => !!sigOf(from) && sigPref();
+        // signature HTML -> readable text, without loading its images
+        function sigText(html) {
+            const doc = new DOMParser().parseFromString(String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(div|p|tr|li|h\d)>/gi, '\n'), 'text/html');
+            return (doc.body.textContent || '').replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        }
+        function renderSig(pre) {
+            const sel = $('#' + pre + 'FromSel'),
+                sig = sigOf(sel && sel.value);
+            $('#' + pre + 'SigBox').hidden = !sig;
+            $('#' + pre + 'Sig').checked = sigPref();
+            $('#' + pre + 'SigPrev').textContent = sig ? sigText(sig) : '';
+            $('#' + pre + 'SigPrev').hidden = !sigPref();
+        }
+        // follow-up: if the body is still the untouched saved email, redo its sign-off for the new signature setting
+        function refreshFuTemplate() {
+            const x = getLeads().find(v => String(v.id) === $('#fuLead').value);
+            if (!x || $('#fuBody').value !== FU.tplBody)
+                return;
+            const d = fuDraft(x, $('#fuSig').checked && !!sigOf($('#fuFromSel').value));
+            $('#fuBody').value = FU.tplBody = d.body;
+        }
         // fill a From dropdown; it stays hidden when the mailbox only has one address
         async function fillFrom(sel) {
             const el = $(sel),
@@ -12291,17 +12361,38 @@
             el.innerHTML = G.email ? `<option value="${esc(G.email)}">${esc(G.email)}</option>` : '';
             fld.hidden = true;
             const list = await loadSendAs();
-            if (!list.length)
+            if (!list.length) {
+                renderSig(sel.replace('#', '').replace('FromSel', ''));
                 return;
+            }
             const pick = preferredFrom(list);
             el.innerHTML = list.map(a => `<option value="${esc(a.email)}"${a.email === pick ? ' selected' : ''}>${esc(a.name ? a.name + ' <' + a.email + '>' : a.email)}${a.isDefault ? ' (default)' : ''}</option>`).join('');
             fld.hidden = list.length < 2;
+            const pre = sel.replace('#', '').replace('FromSel', '');
+            renderSig(pre);
+            if (pre === 'fu')
+                refreshFuTemplate();
         }
         document.addEventListener('change', e => {
-            if (e.target.classList && e.target.classList.contains('from-sel'))
+            const id = e.target.id || '';
+            if (e.target.classList && e.target.classList.contains('from-sel')) {
                 try {
                     localStorage.setItem(FROM_KEY, e.target.value);
                 } catch (err) {}
+                const pre = id.replace('FromSel', '');
+                renderSig(pre);
+                if (pre === 'fu')
+                    refreshFuTemplate();
+            }
+            if (id === 'fuSig' || id === 'cmSig') {
+                try {
+                    localStorage.setItem(SIG_KEY, e.target.checked ? '1' : '0');
+                } catch (err) {}
+                const pre = id.replace('Sig', '');
+                renderSig(pre);
+                if (pre === 'fu')
+                    refreshFuTemplate();
+            }
         });
         // Gmail's compose link can't pick the From address: say so when it's not the default
         function fromNote(from) {
@@ -12556,7 +12647,10 @@
         }
         async function aiDraft(x, stage, prog) {
             const th = (x.gmailThreads || [])[0] || {};
+            await loadSendAs().catch(() => {});
+            const from = ($('#fuFromSel') && $('#fuFromSel').value) || preferredFrom(SA.list || []);
             return aiCall({
+                hasSignature: $('#fuPop').classList.contains('open') ? ($('#fuSig').checked && !!sigOf(from)) : sigOn(from),
                 stage: FU_NAME[stage],
                 contactName: x.contact || '',
                 title: x.title || '',
@@ -12645,8 +12739,8 @@
             AI.seq++;
             if (fuProg)
                 fuProg.hide();
-            const d = fuDraft(x);
-            $('#fuBody').value = d.body;
+            const d = fuDraft(x, $('#fuSig').checked && !!sigOf($('#fuFromSel').value));
+            $('#fuBody').value = FU.tplBody = d.body;
             if (!$('#fuThread').value)
                 $('#fuSubject').value = d.subject;
             AI.edited = false;
@@ -12662,6 +12756,7 @@
             if (!x)
                 return;
             const d = fuDraft(x);
+            FU.tplBody = d.body;
             $('#fuLead').value = x.id;
             $('#fuThread').value = d.threadId;
             $('#fuTo').value = d.to;
@@ -12712,8 +12807,9 @@
                     continue;
                 try {
                     await gmailSend({
-                        ...fuDraft(x),
-                        from: from || undefined
+                        ...fuDraft(x, sigOn(from)),
+                        from: from || undefined,
+                        signature: sigOn(from)
                     });
                     markFuPending(id, 'portal');
                     sent++;
@@ -12825,7 +12921,8 @@
                 subject: $('#fuSubject').value.trim(),
                 body: $('#fuBody').value,
                 threadId: $('#fuThread').value || undefined,
-                from: $('#fuFromSel').value || undefined
+                from: $('#fuFromSel').value || undefined,
+                signature: $('#fuSig').checked && !!sigOf($('#fuFromSel').value)
             };
             if (!msg.subject || !msg.body.trim()) {
                 st.textContent = 'Add a subject and a message.';
@@ -13000,7 +13097,8 @@
                     title: who.title || '',
                     company: who.company || '',
                     subject: $('#cmSubject').value.trim(),
-                    myName: myDisplayName() || ''
+                    myName: myDisplayName() || '',
+                    hasSignature: $('#cmSig').checked && !!sigOf($('#cmFromSel').value)
                 }, prog);
                 if (seq !== CM.seq)
                     return prog.hide();
@@ -13063,7 +13161,8 @@
                 to,
                 subject: $('#cmSubject').value.trim(),
                 body: $('#cmBody').value,
-                from: $('#cmFromSel').value || undefined
+                from: $('#cmFromSel').value || undefined,
+                signature: $('#cmSig').checked && !!sigOf($('#cmFromSel').value)
             };
         }
         // emails to a lead get logged on that lead by the Gmail sync
