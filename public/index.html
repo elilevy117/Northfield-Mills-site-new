@@ -5318,6 +5318,19 @@
         gap: 12px;
         flex-wrap: wrap;
         margin: -4px 0 6px
+    }
+
+    .cm-mode {
+        margin: 2px 0 12px
+    }
+
+    #cmTone {
+        font: 14px var(--sans);
+        border: 1.5px solid #e6dac4;
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: #fff;
+        color: var(--ink)
     }/* ---------- ACCOUNTS: delete ---------- */
 
     .ac-del {
@@ -6335,6 +6348,7 @@
                     </div>
                     <div class="p-head-actions">
                         <button class="btn-ghost" type="button" id="gConnect" hidden>Reconnect Gmail</button>
+                        <button class="btn-red" type="button" id="gCompose">Compose</button>
                         <button class="btn-ghost g-head-btn" type="button" id="gContactsBtn" hidden>
 
 
@@ -6914,6 +6928,51 @@
                 <div class="nt-actions">
                     <button class="link" type="button" id="fuGmail">Open in Gmail instead</button>
                     <button class="btn-red" type="submit" id="fuSend">Send from Gmail</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- compose a new email -->
+        <div class="pop-scrim" id="cmPop" aria-hidden="true">
+            <form class="pop nt" id="cmForm" novalidate role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+                <button class="pop-close" type="button" data-close-cm aria-label="Close">×</button>
+                <h2 id="cmTitle">New email</h2>
+                <p class="lead-idline" id="cmFrom"></p>
+                <label class="fld">
+                    <span>To</span>
+                    <input id="cmTo" type="email" list="cmList" autocomplete="off" placeholder="name@company.com">
+                    <datalist id="cmList"></datalist>
+                </label>
+                <label class="fld">
+                    <span>Subject</span>
+                    <input id="cmSubject" maxlength="200">
+                </label>
+                <div class="chips cm-mode" id="cmMode" role="tablist" aria-label="How to write it">
+                    <button type="button" data-m="self" class="on">Write it myself</button>
+                    <button type="button" data-m="ai">Write with ChatGPT</button>
+                </div>
+                <div id="cmAiBox" hidden>
+                    <label class="fld">
+                        <span>What should the email say?</span>
+                        <textarea id="cmAsk" rows="3" placeholder="e.g. Introduce Northfield Mills and ask if they co-pack gluten-free baking mixes. Ask for a 15-minute call next week."></textarea>
+                    </label>
+                    <div class="fu-ai">
+                        <select id="cmTone" aria-label="Tone">
+                            <option value="friendly and professional">Friendly</option>
+                            <option value="formal and professional">Formal</option>
+                            <option value="very short and direct">Short</option>
+                        </select>
+                        <button class="sbtn" type="button" id="cmAiGo">Write draft</button>
+                    </div>
+                </div>
+                <label class="fld">
+                    <span>Message</span>
+                    <textarea id="cmBody" rows="10"></textarea>
+                </label>
+                <p class="ct-status" id="cmStatus" role="status" aria-live="polite"></p>
+                <div class="nt-actions">
+                    <button class="link" type="button" id="cmGmail">Open in Gmail instead</button>
+                    <button class="btn-red" type="submit" id="cmSend">Send</button>
                 </div>
             </form>
         </div>
@@ -8807,7 +8866,7 @@
             if (reason === 'manual')
                 saveTab(null);
             $('#view-portal').classList.remove('ready', 'is-admin');
-            ['#ntPop', '#acPop', '#gmailPop', '#leadPop'].forEach(sel => {
+            ['#ntPop', '#acPop', '#gmailPop', '#leadPop', '#cmPop', '#fuPop', '#fuTplPop'].forEach(sel => {
                 $(sel).classList.remove('open');
                 $(sel).setAttribute('aria-hidden', 'true');
             });
@@ -12496,6 +12555,213 @@
             };
             localStorage.setItem(FU_TPL_KEY, JSON.stringify(v));
             toast(FU_NAME[$('#fuTplStage').value] + ' email saved.');
+        });
+
+        // ---------- Gmail: compose a new email (yourself or with ChatGPT) ----------
+        const CM = {
+            mode: 'self',
+            seq: 0
+        };
+        function cmPeople() {
+            // leads + saved contacts, for the To suggestions and to give ChatGPT the person's name/company
+            const map = new Map();
+            getLeads().forEach(x => {
+                const e = String(x.email || '').trim().toLowerCase();
+                if (EMAIL_RE.test(e))
+                    map.set(e, {
+                        email: e,
+                        name: x.contact || '',
+                        company: x.company || '',
+                        title: x.title || '',
+                        leadId: x.id
+                    });
+            });
+            try {
+                (cStore().saved || []).forEach(c => {
+                    const e = String(c.email || '').trim().toLowerCase();
+                    if (EMAIL_RE.test(e) && !map.has(e))
+                        map.set(e, {
+                            email: e,
+                            name: c.name || '',
+                            company: c.company || '',
+                            title: c.title || ''
+                        });
+                });
+            } catch (e) {}
+            return map;
+        }
+        function setCmMode(m) {
+            CM.mode = m;
+            document.querySelectorAll('#cmMode button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+            $('#cmAiBox').hidden = m !== 'ai';
+            if (m === 'ai')
+                setTimeout(() => $('#cmAsk').focus(), 30);
+        }
+        function openCompose(pre={}) {
+            $('#cmForm').reset();
+            CM.seq++;
+            const ppl = cmPeople();
+            $('#cmList').innerHTML = [...ppl.values()].map(p => `<option value="${esc(p.email)}">${esc([p.name, p.company].filter(Boolean).join(' · '))}</option>`).join('');
+            $('#cmFrom').textContent = G.email ? 'From ' + G.email : '';
+            $('#cmTo').value = pre.to || '';
+            $('#cmSubject').value = pre.subject || '';
+            $('#cmStatus').textContent = '';
+            $('#cmStatus').className = 'ct-status';
+            $('#cmSend').disabled = false;
+            setCmMode('self');
+            $('#cmPop').classList.add('open');
+            $('#cmPop').setAttribute('aria-hidden', 'false');
+            setTimeout(() => $(pre.to ? '#cmSubject' : '#cmTo').focus(), 60);
+        }
+        function closeCompose() {
+            CM.seq++;
+            $('#cmPop').classList.remove('open');
+            $('#cmPop').setAttribute('aria-hidden', 'true');
+        }
+        async function cmWrite() {
+            const ask = $('#cmAsk').value.trim(),
+                st = $('#cmStatus'),
+                btn = $('#cmAiGo');
+            if (!ask) {
+                st.textContent = 'Tell ChatGPT what the email should say.';
+                $('#cmAsk').focus();
+                return;
+            }
+            if (MODE !== 'netlify') {
+                st.textContent = 'ChatGPT drafts work on the live site only.';
+                return;
+            }
+            const to = $('#cmTo').value.trim().toLowerCase(),
+                who = cmPeople().get(to) || {};
+            const seq = ++CM.seq;
+            btn.disabled = true;
+            btn.textContent = 'Writing…';
+            st.textContent = 'ChatGPT is writing a draft…';
+            st.className = 'ct-status';
+            try {
+                const bearer = await accessToken();
+                if (!bearer)
+                    throw new Error('Your portal session ended. Sign in again.');
+                const r = await fetch('/.netlify/functions/ai-draft', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: 'Bearer ' + bearer,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        mode: 'compose',
+                        instructions: ask,
+                        tone: $('#cmTone').value,
+                        to,
+                        contactName: who.name || '',
+                        title: who.title || '',
+                        company: who.company || '',
+                        subject: $('#cmSubject').value.trim(),
+                        myName: myDisplayName() || ''
+                    })
+                });
+                const j = await r.json().catch(() => ({}));
+                if (seq !== CM.seq)
+                    return;
+                if (r.status === 404)
+                    throw new Error('ChatGPT isn’t set up on the server yet (ai-draft function).');
+                if (!r.ok)
+                    throw new Error(j.error || 'ChatGPT couldn’t write a draft.');
+                if (!j.body)
+                    throw new Error('ChatGPT returned an empty draft.');
+                if (j.mode !== 'compose' && !j.compose)
+                    throw new Error('The ai-draft file on the server is the older version. Update it to write new emails.');
+                $('#cmBody').value = j.body;
+                if (j.subject && !$('#cmSubject').value.trim())
+                    $('#cmSubject').value = j.subject;
+                st.textContent = 'ChatGPT draft. Edit anything before sending, or click Write draft again for another.';
+                st.className = 'ct-status ok';
+            } catch (e) {
+                if (seq === CM.seq)
+                    st.textContent = e.message || 'Couldn’t get a draft.';
+            } finally {
+                if (seq === CM.seq) {
+                    btn.disabled = false;
+                    btn.textContent = 'Write draft';
+                }
+            }
+        }
+        $('#gCompose').addEventListener('click', () => openCompose());
+        $('#cmMode').addEventListener('click', e => {
+            const b = e.target.closest('button[data-m]');
+            if (b)
+                setCmMode(b.dataset.m);
+        });
+        $('#cmAiGo').addEventListener('click', cmWrite);
+        document.addEventListener('click', e => {
+            if (e.target.closest('[data-close-cm]') || e.target.id === 'cmPop')
+                closeCompose();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && $('#cmPop').classList.contains('open'))
+                closeCompose();
+        });
+        function cmCheck() {
+            const to = $('#cmTo').value.trim(),
+                st = $('#cmStatus');
+            if (!EMAIL_RE.test(to)) {
+                st.textContent = 'Add a valid email address in To.';
+                $('#cmTo').focus();
+                return null;
+            }
+            if (!$('#cmBody').value.trim()) {
+                st.textContent = 'Write a message first.';
+                $('#cmBody').focus();
+                return null;
+            }
+            return {
+                to,
+                subject: $('#cmSubject').value.trim(),
+                body: $('#cmBody').value
+            };
+        }
+        // emails to a lead get logged on that lead by the Gmail sync
+        function cmAfterSend(to) {
+            const lead = getLeads().find(x => String(x.email || '').trim().toLowerCase() === to.toLowerCase());
+            if (lead && canUse('gmail') && MODE === 'netlify')
+                setTimeout(() => queueLeadSync(lead.id), 4000);
+        }
+        $('#cmForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const msg = cmCheck(),
+                st = $('#cmStatus');
+            if (!msg)
+                return;
+            if (!msg.subject && !confirm('Send without a subject?'))
+                return;
+            $('#cmSend').disabled = true;
+            st.textContent = 'Sending…';
+            st.className = 'ct-status';
+            try {
+                await gmailSend(msg);
+                closeCompose();
+                const t = 'Email sent to ' + msg.to + '.';
+                toast(t);
+                cmAfterSend(msg.to);
+                if (G.folder === 'sent')
+                    setTimeout(() => gmailOpen(true), 1500);
+            } catch (err) {
+                $('#cmSend').disabled = false;
+                if (err.code === 'nosend') {
+                    FU.noSend = true;
+                    st.textContent = 'Sending from the portal isn’t set up on the server yet. Use “Open in Gmail instead”: it opens this exact email ready to send.';
+                } else
+                    st.textContent = err.message || 'Couldn’t send it.';
+            }
+        });
+        $('#cmGmail').addEventListener('click', () => {
+            const msg = cmCheck();
+            if (!msg)
+                return;
+            window.open(gmailComposeUrl(msg), '_blank', 'noopener');
+            closeCompose();
+            cmAfterSend(msg.to);
+            toast('Opened in Gmail, ready to send.');
         });
 
         // "/" jumps to the search box on the current tab
