@@ -5331,6 +5331,97 @@
         padding: 8px 10px;
         background: #fff;
         color: var(--ink)
+    }/* ---------- ChatGPT progress ---------- */
+
+    .ai-prog {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        margin: 0 0 12px;
+        border-radius: 12px;
+        background: #faf3e8;
+        border: 1px solid #eee0c8;
+        font-size: 13.5px
+    }
+
+    .ai-prog[hidden] {
+        display: none
+    }
+
+    .ai-spin {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        border-radius: 50%;
+        border: 2.5px solid #e6d3b3;
+        border-top-color: var(--red);
+        animation: aiSpin .8s linear infinite
+    }
+
+    .ai-prog.done .ai-spin {
+        animation: none;
+        border-color: #2f7d4f
+    }
+
+    .ai-prog.err .ai-spin {
+        animation: none;
+        border-color: var(--red)
+    }
+
+    @keyframes aiSpin {
+        to {
+            transform: rotate(360deg)
+        }
+    }
+
+    .ai-txt {
+        flex: 1;
+        min-width: 0
+    }
+
+    .ai-step {
+        display: block;
+        color: var(--ink);
+        font-weight: 600
+    }
+
+    .ai-bar {
+        display: block;
+        height: 4px;
+        margin-top: 6px;
+        border-radius: 4px;
+        background: #efe3cf;
+        overflow: hidden
+    }
+
+    .ai-bar i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--red);
+        border-radius: 4px;
+        transition: width .6s ease
+    }
+
+    .ai-time {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        flex: none
+    }
+
+    .ai-prog.done .ai-cancel, .ai-prog.err .ai-cancel {
+        display: none
+    }
+
+    textarea.ai-writing {
+        background: #fffaf2
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .ai-spin {
+            animation-duration: 2.4s
+        }
     }/* ---------- ACCOUNTS: delete ---------- */
 
     .ac-del {
@@ -6924,6 +7015,17 @@
                     <button class="sbtn" type="button" id="fuAi">Suggest with AI</button>
                     <button class="link" type="button" id="fuTpl">Use my saved email</button>
                 </div>
+                <div class="ai-prog" id="fuProg" hidden role="status" aria-live="polite">
+                    <span class="ai-spin" aria-hidden="true"></span>
+                    <span class="ai-txt">
+                        <b class="ai-step"></b>
+                        <span class="ai-bar">
+                            <i></i>
+                        </span>
+                    </span>
+                    <span class="ai-time"></span>
+                    <button class="link ai-cancel" type="button">Cancel</button>
+                </div>
                 <p class="ct-status" id="fuStatus" role="status" aria-live="polite"></p>
                 <div class="nt-actions">
                     <button class="link" type="button" id="fuGmail">Open in Gmail instead</button>
@@ -6963,6 +7065,17 @@
                             <option value="very short and direct">Short</option>
                         </select>
                         <button class="sbtn" type="button" id="cmAiGo">Write draft</button>
+                    </div>
+                    <div class="ai-prog" id="cmProg" hidden role="status" aria-live="polite">
+                        <span class="ai-spin" aria-hidden="true"></span>
+                        <span class="ai-txt">
+                            <b class="ai-step"></b>
+                            <span class="ai-bar">
+                                <i></i>
+                            </span>
+                        </span>
+                        <span class="ai-time"></span>
+                        <button class="link ai-cancel" type="button">Cancel</button>
                     </div>
                 </div>
                 <label class="fld">
@@ -12232,89 +12345,202 @@
             seq: 0,
             edited: false
         };
-        async function aiDraft(x, stage) {
-            const noai = m => {
+        // Shows what ChatGPT is doing. The server doesn't report stages, so steps follow how a draft normally goes; the timer is real.
+        function aiProgress(sel, steps) {
+            const el = $(sel),
+                t0 = Date.now();
+            let s0 = t0,
+                i = 0,
+                dead = false;
+            const ctrl = {
+                abort: null,
+                cancelled: false
+            };
+            const set = (txt, pct) => {
+                if (dead)
+                    return;
+                el.querySelector('.ai-step').textContent = txt;
+                if (pct !== undefined)
+                    el.querySelector('.ai-bar i').style.width = pct + '%';
+            };
+            el.classList.remove('done', 'err');
+            el.hidden = false;
+            set(steps[0][1], 6);
+            const tick = setInterval(() => {
+                el.querySelector('.ai-time').textContent = Math.floor((Date.now() - t0) / 1000) + 's';
+                const sec = (Date.now() - s0) / 1000;
+                while (i + 1 < steps.length && sec >= steps[i + 1][0]) {
+                    i++;
+                    set(steps[i][1], Math.min(92, 8 + i * (84 / (steps.length - 1))));
+                }
+            }, 250);
+            el.querySelector('.ai-time').textContent = '0s';
+            el.querySelector('.ai-cancel').onclick = () => {
+                ctrl.cancelled = true;
+                if (ctrl.abort)
+                    ctrl.abort();
+            };
+            return Object.assign(ctrl, {
+                set,
+                retry() {
+                    // show the retry for a couple of seconds, then run through the steps again
+                    i = 0;
+                    s0 = Date.now() + 2000;
+                    set('That took too long, trying once more…', 30);
+                },
+                finish(ok, txt) {
+                    clearInterval(tick);
+                    if (dead)
+                        return;
+                    el.classList.add(ok ? 'done' : 'err');
+                    set(txt || (ok ? 'Done' : 'Didn’t work'), ok ? 100 : 100);
+                    if (ok)
+                        setTimeout(() => {
+                            if (!dead)
+                                el.hidden = true;
+                        }, 1600);
+                },
+                hide() {
+                    clearInterval(tick);
+                    dead = true;
+                    el.hidden = true;
+                }
+            });
+        }
+        // One request to the ai-draft server function. Retries once if it times out or the server hiccups.
+        async function aiCall(payload, prog) {
+            const fail = (m, code) => {
                 const e = new Error(m);
-                e.code = 'noai';
+                if (code)
+                    e.code = code;
                 return e;
             };
             if (MODE !== 'netlify')
-                throw noai('AI suggestions work on the live site only.');
-            const bearer = await accessToken();
-            if (!bearer)
-                throw new Error('Your portal session ended. Sign in again.');
-            const th = (x.gmailThreads || [])[0] || {};
-            let r;
-            try {
-                r = await fetch('/.netlify/functions/ai-draft', {
-                    method: 'POST',
-                    headers: {
-                        Authorization: 'Bearer ' + bearer,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        stage: FU_NAME[stage],
-                        contactName: x.contact || '',
-                        title: x.title || '',
-                        company: x.company || '',
-                        myName: myDisplayName() || '',
-                        lastSubject: th.subject || '',
-                        lastSnippet: th.snippet || '',
-                        notes: x.notes || '',
-                        history: (x.history || []).slice(-6).map(h => h.date + ': ' + h.label)
-                    })
-                });
-            } catch (e) {
-                throw new Error('Couldn’t reach the AI. Check your connection.');
+                throw fail('ChatGPT drafts work on the live site only.', 'noai');
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                if (prog.cancelled)
+                    throw fail('Cancelled.', 'cancel');
+                const bearer = await accessToken();
+                if (!bearer)
+                    throw fail('Your portal session ended. Sign in again.');
+                const ac = new AbortController(),
+                    timer = setTimeout(() => ac.abort(), 22000);
+                prog.abort = () => ac.abort();
+                let r,
+                    j = null;
+                try {
+                    r = await fetch('/.netlify/functions/ai-draft', {
+                        method: 'POST',
+                        headers: {
+                            Authorization: 'Bearer ' + bearer,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload),
+                        signal: ac.signal
+                    });
+                    j = await r.json().catch(() => null);
+                } catch (e) {
+                    clearTimeout(timer);
+                    if (prog.cancelled)
+                        throw fail('Cancelled.', 'cancel');
+                    if (attempt === 1) {
+                        prog.retry();
+                        continue;
+                    }
+                    throw fail(e.name === 'AbortError' ? 'ChatGPT didn’t answer in time. Try again in a moment.' : 'Couldn’t reach ChatGPT. Check your connection.');
+                }
+                clearTimeout(timer);
+                if (r.ok && j && j.body)
+                    return j;
+                if (r.status === 404 && !j)
+                    throw fail('ChatGPT isn’t set up on the server yet (ai-draft function).', 'noai');
+                if (r.status === 401)
+                    throw fail((j && j.error) || 'Sign in to the portal again.');
+                if (j && j.code === 'setup')
+                    throw fail(j.error, 'setup');
+                // Netlify cuts functions off at 10 seconds and answers with a plain 502/504 page
+                const slow = !j || r.status === 502 || r.status === 504 || (j && j.code === 'slow');
+                if (slow && attempt === 1) {
+                    prog.retry();
+                    continue;
+                }
+                throw fail((j && j.error) || (slow ? 'ChatGPT took longer than Netlify allows (10 seconds), twice. Try again, or set OPENAI_MODEL to gpt-4o-mini in Netlify for faster drafts.' : 'ChatGPT couldn’t write a draft (server error ' + r.status + ').'));
             }
-            const j = await r.json().catch(() => ({}));
-            if (r.status === 404)
-                throw noai('AI suggestions aren’t set up on the server yet (ai-draft function).');
-            if (!r.ok) {
-                const e = new Error(j.error || 'The AI couldn’t write a suggestion.');
-                if (j.code === 'setup')
-                    e.code = 'noai';
-                throw e;
-            }
-            if (!j.body)
-                throw new Error('The AI returned an empty suggestion.');
-            return j;
         }
+        async function aiDraft(x, stage, prog) {
+            const th = (x.gmailThreads || [])[0] || {};
+            return aiCall({
+                stage: FU_NAME[stage],
+                contactName: x.contact || '',
+                title: x.title || '',
+                company: x.company || '',
+                myName: myDisplayName() || '',
+                lastSubject: th.subject || '',
+                lastSnippet: th.snippet || '',
+                notes: x.notes || '',
+                history: (x.history || []).slice(-6).map(h => h.date + ': ' + h.label)
+            }, prog);
+        }
+        let fuProg = null;
         async function suggestFollowUp(manual) {
             const id = $('#fuLead').value,
                 x = getLeads().find(v => String(v.id) === String(id));
             if (!x)
                 return;
+            if (fuProg)
+                fuProg.hide();
             const seq = ++AI.seq,
                 st = $('#fuStatus'),
-                btn = $('#fuAi');
+                btn = $('#fuAi'),
+                who = String(x.contact || '').split(' ')[0] || 'this contact',
+                hasThread = !!(x.gmailThreads || []).length;
+            const prog = fuProg = aiProgress('#fuProg', [
+            [0, 'Reading ' + who + '’s lead details…'],
+            [1.2, hasThread ? 'Looking at your last email with them…' : 'Checking where the follow-ups are at…'],
+            [2.6, 'Thinking about what to say for ' + FU_NAME[FU_NEXT[x.stage]] + '…'],
+            [4.5, 'Writing the email…'],
+            [8, 'Polishing the wording…'],
+            [13, 'Still working, ChatGPT is slow right now…']
+            ]);
             btn.disabled = true;
             btn.textContent = 'Writing…';
-            st.textContent = 'Writing a suggestion…';
+            st.textContent = '';
             st.className = 'ct-status';
+            $('#fuBody').classList.add('ai-writing');
             try {
-                const d = await aiDraft(x, FU_NEXT[x.stage]);
+                const d = await aiDraft(x, FU_NEXT[x.stage], prog);
                 if (seq !== AI.seq || !$('#fuPop').classList.contains('open'))
-                    return;
+                    return prog.hide();
                 // don't overwrite something you've started typing unless you asked for a new one
                 if (AI.edited && !manual) {
+                    prog.finish(true, 'Suggestion ready');
                     st.textContent = 'An AI suggestion is ready. Click “Suggest with AI” to use it.';
                     return;
                 }
                 AI.ok = true;
+                prog.set('Filling in the draft…', 96);
                 $('#fuBody').value = d.body;
                 if (d.subject && !$('#fuThread').value)
                     $('#fuSubject').value = d.subject;
                 AI.edited = false;
+                prog.finish(true, 'Draft ready');
                 st.textContent = 'AI suggestion. Edit anything you like before sending, or ask for another.' + (FU.noSend ? ' Sending from the portal isn’t set up yet, so use “Open in Gmail instead”.' : '');
                 st.className = 'ct-status ok';
             } catch (e) {
                 if (seq !== AI.seq)
-                    return;
-                if (e.code === 'noai')
+                    return prog.hide();
+                if (e.code === 'noai' || e.code === 'setup')
                     AI.ok = false;
-                st.textContent = e.code === 'noai' && !manual ? '' : (e.message || 'Couldn’t get a suggestion.') + ' Your saved email is filled in instead.';
+                if (e.code === 'cancel' || (e.code === 'noai' && !manual)) {
+                    prog.hide();
+                    if (e.code === 'cancel')
+                        st.textContent = 'Cancelled. Your saved email is filled in.';
+                } else {
+                    prog.finish(false, 'Couldn’t write a suggestion');
+                    st.textContent = (e.message || 'Couldn’t get a suggestion.') + ' Your saved email is filled in instead.';
+                }
             } finally {
+                $('#fuBody').classList.remove('ai-writing');
                 if (seq === AI.seq) {
                     btn.disabled = false;
                     btn.textContent = 'Suggest with AI';
@@ -12330,6 +12556,8 @@
             if (!x)
                 return;
             AI.seq++;
+            if (fuProg)
+                fuProg.hide();
             const d = fuDraft(x);
             $('#fuBody').value = d.body;
             if (!$('#fuThread').value)
@@ -12341,6 +12569,8 @@
             $('#fuAi').textContent = 'Suggest with AI';
         });
         function openFollowUp(id) {
+            if (fuProg)
+                fuProg.hide();
             const x = getLeads().find(v => String(v.id) === String(id));
             if (!x)
                 return;
@@ -12366,6 +12596,12 @@
         }
         function closeFu() {
             AI.seq++;
+            if (fuProg) {
+                fuProg.cancelled = true;
+                if (fuProg.abort)
+                    fuProg.abort();
+                fuProg.hide();
+            }
             ['#fuPop', '#fuTplPop'].forEach(sel => {
                 $(sel).classList.remove('open');
                 $(sel).setAttribute('aria-hidden', 'true');
@@ -12598,6 +12834,8 @@
                 setTimeout(() => $('#cmAsk').focus(), 30);
         }
         function openCompose(pre={}) {
+            if (cmProg)
+                cmProg.hide();
             $('#cmForm').reset();
             CM.seq++;
             const ppl = cmPeople();
@@ -12615,9 +12853,16 @@
         }
         function closeCompose() {
             CM.seq++;
+            if (cmProg) {
+                cmProg.cancelled = true;
+                if (cmProg.abort)
+                    cmProg.abort();
+                cmProg.hide();
+            }
             $('#cmPop').classList.remove('open');
             $('#cmPop').setAttribute('aria-hidden', 'true');
         }
+        let cmProg = null;
         async function cmWrite() {
             const ask = $('#cmAsk').value.trim(),
                 st = $('#cmStatus'),
@@ -12627,59 +12872,60 @@
                 $('#cmAsk').focus();
                 return;
             }
-            if (MODE !== 'netlify') {
-                st.textContent = 'ChatGPT drafts work on the live site only.';
-                return;
-            }
             const to = $('#cmTo').value.trim().toLowerCase(),
-                who = cmPeople().get(to) || {};
+                who = cmPeople().get(to) || {},
+                first = String(who.name || '').split(' ')[0];
+            if (cmProg)
+                cmProg.hide();
             const seq = ++CM.seq;
+            const prog = cmProg = aiProgress('#cmProg', [
+            [0, 'Reading your instructions…'],
+            [1.2, first ? 'Looking up ' + first + (who.company ? ' at ' + who.company : '') + '…' : 'Working out who it’s for…'],
+            [2.6, 'Thinking about what to say…'],
+            [4.5, 'Writing the email…'],
+            [8, 'Polishing the wording…'],
+            [13, 'Still working, ChatGPT is slow right now…']
+            ]);
             btn.disabled = true;
             btn.textContent = 'Writing…';
-            st.textContent = 'ChatGPT is writing a draft…';
+            st.textContent = '';
             st.className = 'ct-status';
+            $('#cmBody').classList.add('ai-writing');
             try {
-                const bearer = await accessToken();
-                if (!bearer)
-                    throw new Error('Your portal session ended. Sign in again.');
-                const r = await fetch('/.netlify/functions/ai-draft', {
-                    method: 'POST',
-                    headers: {
-                        Authorization: 'Bearer ' + bearer,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        mode: 'compose',
-                        instructions: ask,
-                        tone: $('#cmTone').value,
-                        to,
-                        contactName: who.name || '',
-                        title: who.title || '',
-                        company: who.company || '',
-                        subject: $('#cmSubject').value.trim(),
-                        myName: myDisplayName() || ''
-                    })
-                });
-                const j = await r.json().catch(() => ({}));
+                const j = await aiCall({
+                    mode: 'compose',
+                    instructions: ask,
+                    tone: $('#cmTone').value,
+                    to,
+                    contactName: who.name || '',
+                    title: who.title || '',
+                    company: who.company || '',
+                    subject: $('#cmSubject').value.trim(),
+                    myName: myDisplayName() || ''
+                }, prog);
                 if (seq !== CM.seq)
-                    return;
-                if (r.status === 404)
-                    throw new Error('ChatGPT isn’t set up on the server yet (ai-draft function).');
-                if (!r.ok)
-                    throw new Error(j.error || 'ChatGPT couldn’t write a draft.');
-                if (!j.body)
-                    throw new Error('ChatGPT returned an empty draft.');
+                    return prog.hide();
                 if (j.mode !== 'compose' && !j.compose)
                     throw new Error('The ai-draft file on the server is the older version. Update it to write new emails.');
+                prog.set('Filling in the draft…', 96);
                 $('#cmBody').value = j.body;
                 if (j.subject && !$('#cmSubject').value.trim())
                     $('#cmSubject').value = j.subject;
+                prog.finish(true, 'Draft ready');
                 st.textContent = 'ChatGPT draft. Edit anything before sending, or click Write draft again for another.';
                 st.className = 'ct-status ok';
             } catch (e) {
-                if (seq === CM.seq)
+                if (seq !== CM.seq)
+                    return prog.hide();
+                if (e.code === 'cancel') {
+                    prog.hide();
+                    st.textContent = 'Cancelled.';
+                } else {
+                    prog.finish(false, 'Couldn’t write the draft');
                     st.textContent = e.message || 'Couldn’t get a draft.';
+                }
             } finally {
+                $('#cmBody').classList.remove('ai-writing');
                 if (seq === CM.seq) {
                     btn.disabled = false;
                     btn.textContent = 'Write draft';
