@@ -3,7 +3,7 @@
 //   - lead follow-ups (Overview → Preview & send)
 //   - new emails from Gmail Inbox → Compose → "Write with ChatGPT" (mode: "compose")
 // The OpenAI key is read from the Netlify environment variable OPENAI_API_KEY. It is never sent to the browser.
-// Optional: OPENAI_MODEL (defaults to gpt-4o-mini).
+// Optional: OPENAI_MODEL (defaults to gpt-4o-mini, which is fast enough for Netlify's 10-second limit).
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -84,14 +84,23 @@ export const handler = async (event, context) => {
     history: (Array.isArray(d.history) ? d.history : []).slice(-6).map((h) => clip(h, 140)),
   };
 
+  // Netlify stops functions after 10 seconds. Give OpenAI 8.5 so we can still answer with a clear message.
+  const model = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+  const reasoning = /^(o\d|gpt-5)/i.test(model); // "thinking" models: slower, need different settings
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8500);
   let r, j;
   try {
     r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model,
         response_format: { type: 'json_object' },
+        // emails are short: capping the length keeps replies fast
+        max_completion_tokens: reasoning ? 2000 : 600,
+        ...(reasoning ? { reasoning_effort: 'low' } : {}),
         messages: [
           { role: 'system', content: compose ? SYSTEM_COMPOSE : SYSTEM },
           { role: 'user', content: JSON.stringify(ctx) },
@@ -99,10 +108,28 @@ export const handler = async (event, context) => {
       }),
     });
     j = await r.json().catch(() => ({}));
-  } catch {
+  } catch (e) {
+    if (e && e.name === 'AbortError')
+      return json(504, {
+        error: reasoning
+          ? `ChatGPT (${model}) took too long. "Thinking" models are slow for Netlify's 10-second limit: set OPENAI_MODEL to gpt-4o-mini in Netlify.`
+          : 'ChatGPT took too long to answer. Try again.',
+        code: 'slow',
+      });
     return json(502, { error: 'Couldn’t reach OpenAI.' });
+  } finally {
+    clearTimeout(timer);
   }
-  if (!r.ok) return json(502, { error: (j.error && j.error.message) || 'OpenAI didn’t answer.' });
+  if (!r.ok) {
+    const err = (j && j.error) || {};
+    const why =
+      r.status === 401 ? 'OpenAI rejected the API key. Check OPENAI_API_KEY in Netlify, then redeploy.'
+      : err.code === 'insufficient_quota' ? 'Your OpenAI account is out of credit. Add billing at platform.openai.com.'
+      : r.status === 429 ? 'OpenAI is limiting requests right now. Wait a moment and try again.'
+      : err.code === 'model_not_found' || r.status === 404 ? `The model "${model}" isn’t available on your OpenAI account.` + (model === 'gpt-4o-mini' ? ' Set OPENAI_MODEL in Netlify to a model your account can use.' : ' Set OPENAI_MODEL to gpt-4o-mini in Netlify.')
+      : err.message || 'OpenAI didn’t answer.';
+    return json(502, { error: why, code: r.status === 401 || err.code === 'insufficient_quota' || err.code === 'model_not_found' ? 'setup' : undefined });
+  }
 
   let out = {};
   try {
@@ -111,7 +138,10 @@ export const handler = async (event, context) => {
     out = {};
   }
   const body = String(out.body || '').trim();
-  if (!body) return json(502, { error: 'OpenAI returned an empty draft.' });
+  if (!body) {
+    const cutOff = j.choices && j.choices[0] && j.choices[0].finish_reason === 'length';
+    return json(502, { error: cutOff ? 'ChatGPT ran out of room before finishing. Try again.' : 'OpenAI returned an empty draft.', code: 'slow' });
+  }
   const subject = compose && ctx.subject ? ctx.subject : clip(out.subject, 150).replace(/^re:\s*/i, '');
   return json(200, { subject, body: body.slice(0, 6000), ...(compose ? { mode: 'compose' } : {}) });
 };
