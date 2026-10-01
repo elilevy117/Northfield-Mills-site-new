@@ -5331,6 +5331,10 @@
         padding: 8px 10px;
         background: #fff;
         color: var(--ink)
+    }
+
+    .from-sel {
+        width: 100%
     }/* ---------- ChatGPT progress ---------- */
 
     .ai-prog {
@@ -7000,6 +7004,10 @@
                 <input type="hidden" id="fuLead">
                 <input type="hidden" id="fuThread">
                 <label class="fld">
+                    <span>From</span>
+                    <select id="fuFromSel" class="from-sel"></select>
+                </label>
+                <label class="fld">
                     <span>To</span>
                     <input id="fuTo" type="email" readonly>
                 </label>
@@ -7040,6 +7048,10 @@
                 <button class="pop-close" type="button" data-close-cm aria-label="Close">×</button>
                 <h2 id="cmTitle">New email</h2>
                 <p class="lead-idline" id="cmFrom"></p>
+                <label class="fld">
+                    <span>From</span>
+                    <select id="cmFromSel" class="from-sel"></select>
+                </label>
                 <label class="fld">
                     <span>To</span>
                     <input id="cmTo" type="email" list="cmList" autocomplete="off" placeholder="name@company.com">
@@ -12229,6 +12241,73 @@
                 body: fill(tpl.body)
             };
         }
+        // ---------- "Send as" addresses on the connected Gmail (aliases) ----------
+        const FROM_KEY = 'nm_send_from';
+        const SA = {
+            list: null,
+            at: 0,
+            loading: null
+        };
+        async function loadSendAs(force) {
+            if (SA.list && !force && Date.now() - SA.at < 10 * 60000)
+                return SA.list;
+            if (SA.loading)
+                return SA.loading;
+            SA.loading = (async () => {
+                let list = [];
+                try {
+                    const j = await gmailRequest('sendas');
+                    list = (j.sendAs || j.addresses || []).map(a => ({
+                        email: String(a.sendAsEmail || a.email || '').toLowerCase(),
+                        name: a.displayName || a.name || '',
+                        isDefault: !!(a.isDefault || a.isPrimary),
+                        ok: a.verificationStatus ? a.verificationStatus === 'accepted' : true
+                    })).filter(a => a.email && a.ok);
+                } catch (e) {}
+                if (!list.length && G.email)
+                    list = [{
+                        email: String(G.email).toLowerCase(),
+                        name: '',
+                        isDefault: true
+                    }];
+                SA.list = list;
+                SA.at = Date.now();
+                SA.loading = null;
+                return list;
+            })();
+            return SA.loading;
+        }
+        function preferredFrom(list) {
+            let saved = '';
+            try {
+                saved = localStorage.getItem(FROM_KEY) || '';
+            } catch (e) {}
+            return (list.find(a => a.email === saved) || list.find(a => a.isDefault) || list[0] || {}).email || '';
+        }
+        // fill a From dropdown; it stays hidden when the mailbox only has one address
+        async function fillFrom(sel) {
+            const el = $(sel),
+                fld = el.closest('.fld');
+            el.innerHTML = G.email ? `<option value="${esc(G.email)}">${esc(G.email)}</option>` : '';
+            fld.hidden = true;
+            const list = await loadSendAs();
+            if (!list.length)
+                return;
+            const pick = preferredFrom(list);
+            el.innerHTML = list.map(a => `<option value="${esc(a.email)}"${a.email === pick ? ' selected' : ''}>${esc(a.name ? a.name + ' <' + a.email + '>' : a.email)}${a.isDefault ? ' (default)' : ''}</option>`).join('');
+            fld.hidden = list.length < 2;
+        }
+        document.addEventListener('change', e => {
+            if (e.target.classList && e.target.classList.contains('from-sel'))
+                try {
+                    localStorage.setItem(FROM_KEY, e.target.value);
+                } catch (err) {}
+        });
+        // Gmail's compose link can't pick the From address: say so when it's not the default
+        function fromNote(from) {
+            const d = (SA.list || []).find(a => a.isDefault);
+            return from && d && from !== d.email ? ' In Gmail, switch the From line to ' + from + ' before sending.' : '';
+        }
         async function gmailSend(msg) {
             const nosend = m => {
                 const e = new Error(m);
@@ -12585,6 +12664,7 @@
             $('#fuStatus').textContent = FU.noSend ? 'Sending from the portal isn’t set up on the server yet. Use “Open in Gmail instead”.' : '';
             $('#fuStatus').className = 'ct-status';
             $('#fuSend').disabled = false;
+            fillFrom('#fuFromSel');
             $('#fuPop').classList.add('open');
             $('#fuPop').setAttribute('aria-hidden', 'false');
             setTimeout(() => $('#fuBody').focus(), 60);
@@ -12611,7 +12691,8 @@
             const ids = dueFollowUps().map(x => String(x.id)).filter(id => FU.sel.has(id));
             if (!ids.length || FU.sending)
                 return;
-            if (!confirm('Send ' + ids.length + ' follow-up email' + (ids.length === 1 ? '' : 's') + (G.email ? ' from ' + G.email : '') + '? Each one uses its follow-up email, replying in their latest thread when there is one.'))
+            const from = preferredFrom(await loadSendAs());
+            if (!confirm('Send ' + ids.length + ' follow-up email' + (ids.length === 1 ? '' : 's') + (from ? ' from ' + from : '') + '? Each one uses its follow-up email, replying in their latest thread when there is one.'))
                 return;
             FU.sending = true;
             renderNotify();
@@ -12622,7 +12703,10 @@
                 if (!x)
                     continue;
                 try {
-                    await gmailSend(fuDraft(x));
+                    await gmailSend({
+                        ...fuDraft(x),
+                        from: from || undefined
+                    });
                     markFuPending(id, 'portal');
                     sent++;
                 } catch (e) {
@@ -12728,7 +12812,8 @@
                 to: $('#fuTo').value.trim(),
                 subject: $('#fuSubject').value.trim(),
                 body: $('#fuBody').value,
-                threadId: $('#fuThread').value || undefined
+                threadId: $('#fuThread').value || undefined,
+                from: $('#fuFromSel').value || undefined
             };
             if (!msg.subject || !msg.body.trim()) {
                 st.textContent = 'Add a subject and a message.';
@@ -12763,8 +12848,9 @@
                 body: $('#fuBody').value
             }), '_blank', 'noopener');
             markFuPending(id, 'gmail');
+            const note = fromNote($('#fuFromSel').value);
             closeFu();
-            toast('Opened in Gmail. Once you send it, the lead logs it automatically.');
+            toast('Opened in Gmail. Once you send it, the lead logs it automatically.' + note);
             render();
         });
         function fuTplLoad(stage) {
@@ -12840,7 +12926,8 @@
             CM.seq++;
             const ppl = cmPeople();
             $('#cmList').innerHTML = [...ppl.values()].map(p => `<option value="${esc(p.email)}">${esc([p.name, p.company].filter(Boolean).join(' · '))}</option>`).join('');
-            $('#cmFrom').textContent = G.email ? 'From ' + G.email : '';
+            $('#cmFrom').textContent = '';
+            fillFrom('#cmFromSel');
             $('#cmTo').value = pre.to || '';
             $('#cmSubject').value = pre.subject || '';
             $('#cmStatus').textContent = '';
@@ -12963,7 +13050,8 @@
             return {
                 to,
                 subject: $('#cmSubject').value.trim(),
-                body: $('#cmBody').value
+                body: $('#cmBody').value,
+                from: $('#cmFromSel').value || undefined
             };
         }
         // emails to a lead get logged on that lead by the Gmail sync
@@ -12986,7 +13074,7 @@
             try {
                 await gmailSend(msg);
                 closeCompose();
-                const t = 'Email sent to ' + msg.to + '.';
+                const t = 'Email sent to ' + msg.to + (msg.from ? ' from ' + msg.from : '') + '.';
                 toast(t);
                 cmAfterSend(msg.to);
                 if (G.folder === 'sent')
@@ -13007,7 +13095,7 @@
             window.open(gmailComposeUrl(msg), '_blank', 'noopener');
             closeCompose();
             cmAfterSend(msg.to);
-            toast('Opened in Gmail, ready to send.');
+            toast('Opened in Gmail, ready to send.' + fromNote(msg.from));
         });
 
         // "/" jumps to the search box on the current tab
