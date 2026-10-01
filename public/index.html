@@ -5046,11 +5046,22 @@
         .ax-panel {
             margin-left: 0
         }
-    }/* ---------- LEADS: ID spacing + company contacts ---------- */
+    }/* ---------- LEADS: ID spacing + company contacts ---------- *//* company and contact share space evenly; next step gets the most room so it can be read */
 
     #lList .rowi {
-        grid-template-columns: 150px minmax(0, 1fr) 130px 96px 110px 90px;
+        grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) 110px 90px;
         gap: 12px 20px
+    }
+
+    #lList .rowi .c-pr {
+        min-width: 0;
+        line-height: 1.35;
+        overflow-wrap: anywhere
+    }
+
+    #lList .rowi .c-pr .lf-due {
+        display: block;
+        margin-top: 2px
     }
 
     #lList .rowi .num {
@@ -5061,7 +5072,7 @@
 
     @media (max-width: 980px) {
         #lList .rowi {
-            grid-template-columns: 136px minmax(0, 1fr) 110px 100px
+            grid-template-columns: 136px minmax(0, 1fr) minmax(0, 1.3fr) 110px
         }
     }
 
@@ -5197,6 +5208,116 @@
         #lList .lchild {
             padding-left: 30px
         }
+    }/* ---------- OVERVIEW: notifications ---------- */
+
+    .ov-nt {
+        margin-bottom: 18px
+    }
+
+    .nt-block + .nt-block {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid #f1e9dc
+    }
+
+    .nt-h {
+        display: flex;
+        align-items: center;
+        gap: 10px 14px;
+        flex-wrap: wrap;
+        margin-bottom: 6px
+    }
+
+    .nt-h h2 {
+        margin: 0;
+        font-size: 16px
+    }
+
+    .nt-h .nt-tools {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap
+    }
+
+    .nt-h .check {
+        margin: 0;
+        font-size: 13.5px
+    }
+
+    .nt-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 0;
+        border-top: 1px solid #f4ede1
+    }
+
+    .nt-row:first-of-type {
+        border-top: 0
+    }
+
+    .nt-row input[type=checkbox] {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        accent-color: var(--red)
+    }
+
+    .nt-row .nt-main {
+        min-width: 0;
+        flex: 1
+    }
+
+    .nt-row .nt-main b {
+        display: block;
+        color: var(--ink);
+        font-weight: 600
+    }
+
+    .nt-row .nt-main small {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        overflow-wrap: anywhere
+    }
+
+    .nt-row .nt-acts {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        flex: none
+    }
+
+    .nt-info {
+        font-size: 13.5px;
+        color: var(--body)
+    }
+
+    .nt-info small {
+        color: var(--muted)
+    }
+
+    @media (max-width: 520px) {
+        .nt-row {
+            flex-wrap: wrap
+        }
+
+        .nt-row .nt-acts {
+            width: 100%;
+            justify-content: flex-start;
+            padding-left: 30px
+        }
+    }
+
+    .fu-ai {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: -4px 0 6px
     }/* ---------- ACCOUNTS: delete ---------- */
 
     .ac-del {
@@ -6093,6 +6214,7 @@
                     <button class="btn-red" type="button" data-new-ticket>+ New ticket</button>
                 </header>
                 <div id="hcBanner"></div>
+                <div class="p-card ov-nt" id="ovNotify" hidden></div>
                 <div class="p-stats">
                     <button class="stat" data-go="tickets" data-filter="open" data-area="tickets">
                         <span>Open tickets</span>
@@ -6762,6 +6884,67 @@
                     </div>
                 </form>
             </div>
+        </div>
+
+        <!-- follow-up: preview & send -->
+        <div class="pop-scrim" id="fuPop" aria-hidden="true">
+            <form class="pop nt" id="fuForm" novalidate role="dialog" aria-modal="true" aria-labelledby="fuTitle">
+                <button class="pop-close" type="button" data-close-fu aria-label="Close">×</button>
+                <h2 id="fuTitle">Send follow-up</h2>
+                <p class="lead-idline" id="fuMeta"></p>
+                <input type="hidden" id="fuLead">
+                <input type="hidden" id="fuThread">
+                <label class="fld">
+                    <span>To</span>
+                    <input id="fuTo" type="email" readonly>
+                </label>
+                <label class="fld">
+                    <span>Subject</span>
+                    <input id="fuSubject" maxlength="200">
+                </label>
+                <label class="fld">
+                    <span>Message</span>
+                    <textarea id="fuBody" rows="9"></textarea>
+                </label>
+                <div class="fu-ai">
+                    <button class="sbtn" type="button" id="fuAi">Suggest with AI</button>
+                    <button class="link" type="button" id="fuTpl">Use my saved email</button>
+                </div>
+                <p class="ct-status" id="fuStatus" role="status" aria-live="polite"></p>
+                <div class="nt-actions">
+                    <button class="link" type="button" id="fuGmail">Open in Gmail instead</button>
+                    <button class="btn-red" type="submit" id="fuSend">Send from Gmail</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- follow-up email templates -->
+        <div class="pop-scrim" id="fuTplPop" aria-hidden="true">
+            <form class="pop nt" id="fuTplForm" novalidate role="dialog" aria-modal="true" aria-labelledby="fuTplTitle">
+                <button class="pop-close" type="button" data-close-fu aria-label="Close">×</button>
+                <h2 id="fuTplTitle">Follow-up emails</h2>
+                <p class="lead-idline">Used when there’s no earlier email thread to reply in. You can still edit each one before it’s sent. Fill-ins: {first_name}, {company}, {my_name}.</p>
+                <label class="fld">
+                    <span>Which follow-up</span>
+                    <select id="fuTplStage">
+                        <option value="f1">Follow-up #1</option>
+                        <option value="f2">Follow-up #2</option>
+                        <option value="f3">Final follow-up</option>
+                    </select>
+                </label>
+                <label class="fld">
+                    <span>Subject</span>
+                    <input id="fuTplSubject" maxlength="200">
+                </label>
+                <label class="fld">
+                    <span>Message</span>
+                    <textarea id="fuTplBody" rows="9"></textarea>
+                </label>
+                <div class="nt-actions">
+                    <button class="link" type="button" id="fuTplReset">Reset to default</button>
+                    <button class="btn-red" type="submit">Save</button>
+                </div>
+            </form>
         </div>
 
         <!-- ticket detail panel -->
@@ -10503,6 +10686,37 @@
             setTimeout(() => (c.company ? $('#leadStatus') : $('#leadCompany')).focus(), 60);
         }
 
+        // ---------- Overview notifications ----------
+        // Pending company-match questions and a log of what the portal did on its own. Kept in this browser.
+        const NOTICE_KEY = 'nm_portal_notices';
+        function getNotices() {
+            try {
+                return JSON.parse(localStorage.getItem(NOTICE_KEY) || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+        function putNotices(v) {
+            try {
+                localStorage.setItem(NOTICE_KEY, JSON.stringify(v.slice(0, 80)));
+            } catch (e) {}
+        }
+        function addNotice(text, area) {
+            if (!text)
+                return;
+            const v = getNotices();
+            v.unshift({
+                id: 'N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+                kind: 'info',
+                area: area || 'leads',
+                text,
+                at: nowIso()
+            });
+            putNotices(v);
+            if (typeof renderNotify === 'function' && P.started)
+                renderNotify();
+        }
+
         // ---------- lead companies: grouping + matching ----------
         // Each lead stays its own record (own Lead ID, history, follow-ups). Leads at the same company share a companyId.
         const COMPANIES_KEY = 'nm_lead_companies';
@@ -10664,16 +10878,9 @@
                 msg = '';
             if (m && (m.kind === 'exact' || m.kind === 'auto'))
                 co = m.co;
-            else if (m && m.kind === 'ask') {
-                if (confirm('Possible company match: ' + typed + ' and ' + m.co.name + '. Are these the same company?'))
-                    co = m.co;
-                else {
-                    m.co.notSame = [...new Set([...(m.co.notSame || []), nk])];
-                    joinCompany(cos, m.co, {
-                        company: m.co.name
-                    });
-                }
-            }
+            let ask = null;
+            if (m && m.kind === 'ask')
+                ask = m.co; // saved as its own company for now; the question waits in Overview
             if (co) {
                 const others = leads.filter(v => v.companyId === co.id && String(v.id) !== String(x.id)).length;
                 x.companyId = co.id;
@@ -10698,7 +10905,49 @@
                 x.companyId = c.id;
             }
             putCompanies(cos);
+            if (ask && ask.id !== x.companyId) {
+                const v = getNotices();
+                if (!v.some(n => n.kind === 'match' && n.from === x.companyId && n.into === ask.id)) {
+                    v.unshift({
+                        id: 'M' + Date.now().toString(36),
+                        kind: 'match',
+                        area: 'leads',
+                        from: x.companyId,
+                        into: ask.id,
+                        typed,
+                        intoName: ask.name,
+                        at: nowIso()
+                    });
+                    putNotices(v);
+                }
+                msg = 'Possible company match: ' + typed + ' and ' + ask.name + '. Confirm it in Overview.';
+            }
+            if (msg && !ask)
+                addNotice(msg);
             return msg;
+        }
+        // "Yes, same company": move every contact from one company into the other
+        function mergeCompanies(fromId, intoId) {
+            const cos = getCompanies(),
+                from = cos.find(c => c.id === fromId),
+                into = cos.find(c => c.id === intoId);
+            if (!from || !into)
+                return '';
+            const leads = getLeads(),
+                hasPrimary = leads.some(v => v.companyId === intoId && v.primary);
+            leads.forEach(v => {
+                if (v.companyId !== fromId)
+                    return;
+                v.companyId = intoId;
+                v.company = into.name;
+                if (hasPrimary)
+                    v.primary = false;
+            });
+            into.keys = [...new Set([...(into.keys || []), ...(from.keys || [])])];
+            into.domains = [...new Set([...(into.domains || []), ...(from.domains || [])])];
+            putCompanies(cos.filter(c => c.id !== fromId).map(c => c.id === intoId ? into : c));
+            putLeads(leads);
+            return 'Company matched: ' + from.name + ' has been grouped under ' + into.name + '.';
         }
         // Drop companies nobody belongs to any more
         function pruneCompanies(leads) {
@@ -10734,8 +10983,11 @@
             });
             putCompanies(cos);
             putLeads(leads);
-            if (grouped)
-                toast(grouped + ' existing lead' + (grouped === 1 ? ' was' : 's were') + ' grouped with others at the same company.');
+            if (grouped) {
+                const t = grouped + ' existing lead' + (grouped === 1 ? ' was' : 's were') + ' grouped with others at the same company.';
+                toast(t);
+                addNotice(t);
+            }
         }
         const linkUrl = v => /^https?:\/\//i.test(v) ? v : 'https://' + String(v).replace(/^\/+/, '');
         function companyLeads(companyId, leads) {
@@ -11193,7 +11445,7 @@
                 : `<div class="p-card"><div class="empty">${P.mFilter === 'new' ? 'You’re all caught up. New contact form messages show up here.' : 'No messages here.'}</div></div>`);
             }
             // Each section renders on its own so one problem can't blank the rest of the portal.
-            [renderLeads, renderFollowUps, renderEmails, renderContacts, renderTeam, renderHealth, renderLocked, () => {
+            [renderLeads, renderFollowUps, renderNotify, renderEmails, renderContacts, renderTeam, renderHealth, renderLocked, () => {
                 if (canUse('gmail'))
                     refreshUnread();
             }, () => {
@@ -11734,6 +11986,518 @@
             : '<div class="empty">No follow-ups due in the next 3 business days.</div>');
         }
 
+        // ---------- follow-ups: send from Gmail, from Overview ----------
+        const FU_TPL_KEY = 'nm_followup_templates';
+        const FU_DEFAULT = {
+            f1: {
+                subject: 'Following up — Northfield Mills',
+                body: 'Hi {first_name},\n\nI wanted to follow up on my earlier email about working together with {company}. Do you have a few minutes this week to talk?\n\nBest,\n{my_name}\nNorthfield Mills'
+            },
+            f2: {
+                subject: 'Checking in — Northfield Mills',
+                body: 'Hi {first_name},\n\nJust bringing this back to the top of your inbox. I’d still like to explore whether {company} could be a fit for us. Would a quick call work?\n\nBest,\n{my_name}\nNorthfield Mills'
+            },
+            f3: {
+                subject: 'One last follow-up — Northfield Mills',
+                body: 'Hi {first_name},\n\nI don’t want to keep filling your inbox, so this will be my last follow-up for now. If the timing is better later, just reply here and I’ll pick it up.\n\nBest,\n{my_name}\nNorthfield Mills'
+            }
+        };
+        const FU_NEXT = {
+            initial: 'f1',
+            f1: 'f2',
+            f2: 'f3'
+        };
+        const FU_NAME = {
+            f1: 'Follow-up #1',
+            f2: 'Follow-up #2',
+            f3: 'Final follow-up'
+        };
+        function fuTemplates() {
+            let v = {};
+            try {
+                v = JSON.parse(localStorage.getItem(FU_TPL_KEY) || '{}');
+            } catch (e) {}
+            return {
+                f1: {
+                    ...FU_DEFAULT.f1,
+                    ...(v.f1 || {})
+                },
+                f2: {
+                    ...FU_DEFAULT.f2,
+                    ...(v.f2 || {})
+                },
+                f3: {
+                    ...FU_DEFAULT.f3,
+                    ...(v.f3 || {})
+                }
+            };
+        }
+        const FU = {
+            sel: new Set(),
+            sending: false,
+            noSend: false
+        };
+        // sent (or opened in Gmail) but not logged by the Gmail sync yet: hide it for 36 hours
+        const fuPending = x => !!(x.fuPending && x.fuPending.stage === x.stage && Date.now() - x.fuPending.at < 36 * 3600000);
+        function dueFollowUps() {
+            const t = todayISO();
+            return getLeads().filter(x => x.status !== 'closed' && x.status !== 'responded' && FU_NEXT[x.stage] && x.reminder && x.reminder <= t && EMAIL_RE.test(String(x.email || '').trim()) && !fuPending(x)).sort((a, b) => a.reminder.localeCompare(b.reminder));
+        }
+        function fuDraft(x) {
+            const st = FU_NEXT[x.stage],
+                tpl = fuTemplates()[st];
+            const fill = v => String(v || '').replace(/\{first_name\}/g, String(x.contact || '').trim().split(/\s+/)[0] || 'there').replace(/\{company\}/g, x.company || 'your company').replace(/\{my_name\}/g, myDisplayName() || 'The Northfield Mills team');
+            // reply in their latest email thread when there is one
+            const th = (x.gmailThreads || [])[0];
+            return {
+                stage: st,
+                to: String(x.email || '').trim(),
+                threadId: th ? th.id : '',
+                subject: th && th.subject ? (/^re:/i.test(th.subject) ? th.subject : 'Re: ' + th.subject) : fill(tpl.subject),
+                body: fill(tpl.body)
+            };
+        }
+        async function gmailSend(msg) {
+            const nosend = m => {
+                const e = new Error(m);
+                e.code = 'nosend';
+                return e;
+            };
+            if (MODE !== 'netlify')
+                throw nosend('Sending works on the live site only.');
+            const bearer = await accessToken();
+            if (!bearer) {
+                const e = new Error('Your portal session ended. Sign in again.');
+                e.status = -1;
+                throw e;
+            }
+            let r;
+            try {
+                r = await fetch('/.netlify/functions/gmail?action=send', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: 'Bearer ' + bearer,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(msg)
+                });
+            } catch (err) {
+                throw new Error('Couldn’t reach Gmail. Check your connection and try again.');
+            }
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                if ([400, 404, 405, 501].includes(r.status) || /unknown|unsupported|not supported|scope|insufficient|permission/i.test(j.error || ''))
+                    throw nosend('This site’s Gmail connection can read mail but can’t send it yet.');
+                const e = new Error(j.error || 'Gmail didn’t send it.');
+                e.status = r.status;
+                throw e;
+            }
+            // a server without a send action may still answer 200 with mail data: only trust an explicit "sent"
+            if (!(j.sent || j.id || j.messageId || j.ok === true))
+                throw nosend('This site’s Gmail connection can read mail but can’t send it yet.');
+            return j;
+        }
+        function markFuPending(id, via) {
+            const leads = getLeads(),
+                x = leads.find(v => String(v.id) === String(id));
+            if (!x)
+                return;
+            x.fuPending = {
+                stage: x.stage,
+                at: Date.now(),
+                via
+            };
+            putLeads(leads);
+            FU.sel.delete(String(id));
+            if (canUse('gmail') && MODE === 'netlify')
+                setTimeout(() => queueLeadSync(x.id), via === 'gmail' ? 90000 : 4000);
+        }
+        function gmailComposeUrl(d) {
+            const q = new URLSearchParams({
+                view: 'cm',
+                fs: '1',
+                to: d.to,
+                su: d.subject,
+                body: d.body
+            });
+            if (G.email)
+                q.set('authuser', G.email);
+            return 'https://mail.google.com/mail/?' + q.toString();
+        }
+        function renderNotify() {
+            const box = $('#ovNotify');
+            if (!box || !P.started)
+                return;
+            const leadsOk = canUse('leads'),
+                gmailOk = canUse('gmail');
+            const due = leadsOk ? dueFollowUps() : [];
+            [...FU.sel].forEach(id => {
+                if (!due.some(x => String(x.id) === id))
+                    FU.sel.delete(id);
+            });
+            const cos = getCompanies();
+            let notes = getNotices();
+            // drop questions whose companies no longer exist
+            const live = notes.filter(n => n.kind !== 'match' || (cos.some(c => c.id === n.from) && cos.some(c => c.id === n.into)));
+            if (live.length !== notes.length)
+                putNotices(notes = live);
+            const matches = leadsOk ? notes.filter(n => n.kind === 'match') : [];
+            const infos = notes.filter(n => n.kind === 'info' && (n.area === 'team' ? isAdmin() : canUse(n.area || 'leads'))).slice(0, 6);
+            let html = '';
+            if (due.length) {
+                const all = due.every(x => FU.sel.has(String(x.id)));
+                html += `<div class="nt-block"><div class="nt-h"><h2>Follow-ups ready to send <span class="p-count">${due.length}</span></h2>
+                                                    <div class="nt-tools">${gmailOk ? `<label class="check"><input type="checkbox" id="fuAll"${all ? ' checked' : ''}><span>Select all</span></label>
+                                                    <button class="btn-red" type="button" id="fuSendSel"${FU.sel.size && !FU.sending ? '' : ' disabled'}>${FU.sending ? 'Sending…' : 'Send selected' + (FU.sel.size ? ' (' + FU.sel.size + ')' : '')}</button>` : ''}
+                                                    <button class="link" type="button" id="fuTplOpen">Edit follow-up emails</button></div></div>
+                                                    ${FU.noSend ? '<p class="nt-info">Sending straight from the portal needs a server update (see setup notes). Until then, use <b>Open in Gmail</b> on each follow-up: it opens a ready-to-send draft, and the lead logs it automatically once it’s sent.</p>' : ''}
+                                                    ${due.map(x => {const st = FU_NEXT[x.stage];return `<div class="nt-row">${gmailOk ? `<input type="checkbox" data-fu-sel="${esc(x.id)}" aria-label="Select ${esc(x.contact || x.email)}"${FU.sel.has(String(x.id)) ? ' checked' : ''}>` : ''}
+                                                                    <div class="nt-main"><b>${esc(FU_NAME[st])} · ${esc(x.contact || x.email)}${x.company ? ' at ' + esc(x.company) : ''}</b><small><span class="lf-due ${reminderClass(x.reminder)}">${esc(reminderText(x))}</span> · ${esc(x.email)} · Lead ID ${esc(x.id)}</small></div>
+                                                                    <div class="nt-acts">${gmailOk ? `<button class="sbtn" type="button" data-fu-preview="${esc(x.id)}">Preview & send</button>` : ''}<button class="sbtn" type="button" data-lead-open="${esc(x.id)}">Open lead</button></div></div>`;}).join('')}
+                                                    ${gmailOk ? '' : '<p class="nt-info">Sending needs Gmail access. Ask an admin to turn on Gmail for your account.</p>'}</div>`;
+            }
+            if (matches.length)
+                html += `<div class="nt-block"><div class="nt-h"><h2>Company matches to confirm <span class="p-count">${matches.length}</span></h2></div>
+                                                    ${matches.map(n => {const from = cos.find(c => c.id === n.from),into = cos.find(c => c.id === n.into);return `<div class="nt-row"><div class="nt-main"><b>Possible company match: ${esc(from ? from.name : n.typed)} and ${esc(into ? into.name : n.intoName)}. Are these the same company?</b><small>${esc(ago(n.at))} · until you answer, they stay separate</small></div>
+                                                                    <div class="nt-acts"><button class="btn-red" type="button" data-nt-same="${esc(n.id)}">Yes, same company</button><button class="sbtn" type="button" data-nt-diff="${esc(n.id)}">No</button></div></div>`;}).join('')}</div>`;
+            if (infos.length)
+                html += `<div class="nt-block"><div class="nt-h"><h2>Recent notifications</h2><div class="nt-tools"><button class="link" type="button" id="ntClear">Clear</button></div></div>
+                                                    ${infos.map(n => `<div class="nt-row"><div class="nt-main nt-info">${esc(n.text)}<small>${esc(ago(n.at))}</small></div><div class="nt-acts"><button class="link" type="button" data-nt-dismiss="${esc(n.id)}" aria-label="Dismiss">Dismiss</button></div></div>`).join('')}</div>`;
+            box.hidden = !html;
+            put(box, html);
+        }
+        // ---------- AI follow-up suggestions (OpenAI, through the ai-draft server function) ----------
+        // The OpenAI key lives only in Netlify (OPENAI_API_KEY). This page never sees it.
+        const AI = {
+            ok: null,
+            seq: 0,
+            edited: false
+        };
+        async function aiDraft(x, stage) {
+            const noai = m => {
+                const e = new Error(m);
+                e.code = 'noai';
+                return e;
+            };
+            if (MODE !== 'netlify')
+                throw noai('AI suggestions work on the live site only.');
+            const bearer = await accessToken();
+            if (!bearer)
+                throw new Error('Your portal session ended. Sign in again.');
+            const th = (x.gmailThreads || [])[0] || {};
+            let r;
+            try {
+                r = await fetch('/.netlify/functions/ai-draft', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: 'Bearer ' + bearer,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        stage: FU_NAME[stage],
+                        contactName: x.contact || '',
+                        title: x.title || '',
+                        company: x.company || '',
+                        myName: myDisplayName() || '',
+                        lastSubject: th.subject || '',
+                        lastSnippet: th.snippet || '',
+                        notes: x.notes || '',
+                        history: (x.history || []).slice(-6).map(h => h.date + ': ' + h.label)
+                    })
+                });
+            } catch (e) {
+                throw new Error('Couldn’t reach the AI. Check your connection.');
+            }
+            const j = await r.json().catch(() => ({}));
+            if (r.status === 404)
+                throw noai('AI suggestions aren’t set up on the server yet (ai-draft function).');
+            if (!r.ok) {
+                const e = new Error(j.error || 'The AI couldn’t write a suggestion.');
+                if (j.code === 'setup')
+                    e.code = 'noai';
+                throw e;
+            }
+            if (!j.body)
+                throw new Error('The AI returned an empty suggestion.');
+            return j;
+        }
+        async function suggestFollowUp(manual) {
+            const id = $('#fuLead').value,
+                x = getLeads().find(v => String(v.id) === String(id));
+            if (!x)
+                return;
+            const seq = ++AI.seq,
+                st = $('#fuStatus'),
+                btn = $('#fuAi');
+            btn.disabled = true;
+            btn.textContent = 'Writing…';
+            st.textContent = 'Writing a suggestion…';
+            st.className = 'ct-status';
+            try {
+                const d = await aiDraft(x, FU_NEXT[x.stage]);
+                if (seq !== AI.seq || !$('#fuPop').classList.contains('open'))
+                    return;
+                // don't overwrite something you've started typing unless you asked for a new one
+                if (AI.edited && !manual) {
+                    st.textContent = 'An AI suggestion is ready. Click “Suggest with AI” to use it.';
+                    return;
+                }
+                AI.ok = true;
+                $('#fuBody').value = d.body;
+                if (d.subject && !$('#fuThread').value)
+                    $('#fuSubject').value = d.subject;
+                AI.edited = false;
+                st.textContent = 'AI suggestion. Edit anything you like before sending, or ask for another.' + (FU.noSend ? ' Sending from the portal isn’t set up yet, so use “Open in Gmail instead”.' : '');
+                st.className = 'ct-status ok';
+            } catch (e) {
+                if (seq !== AI.seq)
+                    return;
+                if (e.code === 'noai')
+                    AI.ok = false;
+                st.textContent = e.code === 'noai' && !manual ? '' : (e.message || 'Couldn’t get a suggestion.') + ' Your saved email is filled in instead.';
+            } finally {
+                if (seq === AI.seq) {
+                    btn.disabled = false;
+                    btn.textContent = 'Suggest with AI';
+                }
+            }
+        }
+        $('#fuBody').addEventListener('input', () => {
+            AI.edited = true;
+        });
+        $('#fuAi').addEventListener('click', () => suggestFollowUp(true));
+        $('#fuTpl').addEventListener('click', () => {
+            const x = getLeads().find(v => String(v.id) === $('#fuLead').value);
+            if (!x)
+                return;
+            AI.seq++;
+            const d = fuDraft(x);
+            $('#fuBody').value = d.body;
+            if (!$('#fuThread').value)
+                $('#fuSubject').value = d.subject;
+            AI.edited = false;
+            $('#fuStatus').textContent = 'Your saved follow-up email is filled in.';
+            $('#fuStatus').className = 'ct-status';
+            $('#fuAi').disabled = false;
+            $('#fuAi').textContent = 'Suggest with AI';
+        });
+        function openFollowUp(id) {
+            const x = getLeads().find(v => String(v.id) === String(id));
+            if (!x)
+                return;
+            const d = fuDraft(x);
+            $('#fuLead').value = x.id;
+            $('#fuThread').value = d.threadId;
+            $('#fuTo').value = d.to;
+            $('#fuSubject').value = d.subject;
+            $('#fuBody').value = d.body;
+            $('#fuTitle').textContent = 'Send ' + FU_NAME[d.stage];
+            $('#fuMeta').innerHTML = `${esc(x.contact || x.email)}${x.company ? ' at <b>' + esc(x.company) + '</b>' : ''} · Lead ID ${esc(x.id)}${d.threadId ? ' · replies in your latest email thread' : ''}`;
+            $('#fuStatus').textContent = FU.noSend ? 'Sending from the portal isn’t set up on the server yet. Use “Open in Gmail instead”.' : '';
+            $('#fuStatus').className = 'ct-status';
+            $('#fuSend').disabled = false;
+            $('#fuPop').classList.add('open');
+            $('#fuPop').setAttribute('aria-hidden', 'false');
+            setTimeout(() => $('#fuBody').focus(), 60);
+            AI.edited = false;
+            $('#fuAi').hidden = MODE !== 'netlify';
+            // a fresh AI suggestion each time, unless we already know it isn't set up
+            if (AI.ok !== false && MODE === 'netlify')
+                suggestFollowUp(false);
+        }
+        function closeFu() {
+            AI.seq++;
+            ['#fuPop', '#fuTplPop'].forEach(sel => {
+                $(sel).classList.remove('open');
+                $(sel).setAttribute('aria-hidden', 'true');
+            });
+        }
+        async function sendSelected() {
+            const ids = dueFollowUps().map(x => String(x.id)).filter(id => FU.sel.has(id));
+            if (!ids.length || FU.sending)
+                return;
+            if (!confirm('Send ' + ids.length + ' follow-up email' + (ids.length === 1 ? '' : 's') + (G.email ? ' from ' + G.email : '') + '? Each one uses its follow-up email, replying in their latest thread when there is one.'))
+                return;
+            FU.sending = true;
+            renderNotify();
+            let sent = 0,
+                failed = 0;
+            for (const id of ids) {
+                const x = getLeads().find(v => String(v.id) === id);
+                if (!x)
+                    continue;
+                try {
+                    await gmailSend(fuDraft(x));
+                    markFuPending(id, 'portal');
+                    sent++;
+                } catch (e) {
+                    if (e.code === 'nosend') {
+                        FU.noSend = true;
+                        break;
+                    }
+                    failed++;
+                }
+            }
+            FU.sending = false;
+            const t = sent ? sent + ' follow-up' + (sent === 1 ? '' : 's') + ' sent from Gmail.' + (failed ? ' ' + failed + ' couldn’t be sent.' : '') : FU.noSend ? 'Sending from the portal isn’t set up on the server yet. Use Open in Gmail for now.' : 'Couldn’t send the follow-ups. Try again.';
+            toast(t);
+            if (sent)
+                addNotice(t);
+            render();
+        }
+        document.addEventListener('change', e => {
+            if (e.target.id === 'fuAll') {
+                const due = dueFollowUps();
+                if (e.target.checked)
+                    due.forEach(x => FU.sel.add(String(x.id)));
+                else
+                    FU.sel.clear();
+                renderNotify();
+                return;
+            }
+            const c = e.target.closest && e.target.closest('[data-fu-sel]');
+            if (c) {
+                if (c.checked)
+                    FU.sel.add(c.dataset.fuSel);
+                else
+                    FU.sel.delete(c.dataset.fuSel);
+                renderNotify();
+            }
+        });
+        document.addEventListener('click', e => {
+            if (e.target.closest('#fuSendSel')) {
+                sendSelected();
+                return;
+            }
+            const pv = e.target.closest('[data-fu-preview]');
+            if (pv) {
+                openFollowUp(pv.dataset.fuPreview);
+                return;
+            }
+            if (e.target.closest('#fuTplOpen')) {
+                fuTplLoad('f1');
+                $('#fuTplPop').classList.add('open');
+                $('#fuTplPop').setAttribute('aria-hidden', 'false');
+                return;
+            }
+            if (e.target.closest('[data-close-fu]') || e.target.id === 'fuPop' || e.target.id === 'fuTplPop') {
+                closeFu();
+                return;
+            }
+            const same = e.target.closest('[data-nt-same]'),
+                diff = e.target.closest('[data-nt-diff]');
+            if (same || diff) {
+                const id = (same || diff).dataset[same ? 'ntSame' : 'ntDiff'];
+                const n = getNotices().find(v => v.id === id);
+                putNotices(getNotices().filter(v => v.id !== id));
+                if (n && same) {
+                    const t = mergeCompanies(n.from, n.into);
+                    if (t) {
+                        toast(t);
+                        addNotice(t);
+                    }
+                } else if (n) {
+                    const cos = getCompanies(),
+                        into = cos.find(c => c.id === n.into),
+                        from = cos.find(c => c.id === n.from);
+                    if (into && from) {
+                        into.notSame = [...new Set([...(into.notSame || []), ...(from.keys || [])])];
+                        from.notSame = [...new Set([...(from.notSame || []), ...(into.keys || [])])];
+                        putCompanies(cos);
+                    }
+                    toast('Kept as separate companies.');
+                }
+                render();
+                return;
+            }
+            const dm = e.target.closest('[data-nt-dismiss]');
+            if (dm) {
+                putNotices(getNotices().filter(v => v.id !== dm.dataset.ntDismiss));
+                renderNotify();
+                return;
+            }
+            if (e.target.closest('#ntClear')) {
+                putNotices(getNotices().filter(v => v.kind !== 'info'));
+                renderNotify();
+            }
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && ($('#fuPop').classList.contains('open') || $('#fuTplPop').classList.contains('open')))
+                closeFu();
+        });
+        $('#fuForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const id = $('#fuLead').value,
+                st = $('#fuStatus');
+            const msg = {
+                to: $('#fuTo').value.trim(),
+                subject: $('#fuSubject').value.trim(),
+                body: $('#fuBody').value,
+                threadId: $('#fuThread').value || undefined
+            };
+            if (!msg.subject || !msg.body.trim()) {
+                st.textContent = 'Add a subject and a message.';
+                return;
+            }
+            $('#fuSend').disabled = true;
+            st.textContent = 'Sending…';
+            st.className = 'ct-status';
+            try {
+                await gmailSend(msg);
+                markFuPending(id, 'portal');
+                closeFu();
+                const x = getLeads().find(v => String(v.id) === id);
+                const t = 'Follow-up sent to ' + ((x && (x.contact || x.email)) || msg.to) + '. It’ll be logged on the lead automatically.';
+                toast(t);
+                addNotice(t);
+                render();
+            } catch (err) {
+                $('#fuSend').disabled = false;
+                if (err.code === 'nosend') {
+                    FU.noSend = true;
+                    st.textContent = 'Sending from the portal isn’t set up on the server yet. Use “Open in Gmail instead”: it opens this exact email ready to send.';
+                } else
+                    st.textContent = err.message || 'Couldn’t send it.';
+            }
+        });
+        $('#fuGmail').addEventListener('click', () => {
+            const id = $('#fuLead').value;
+            window.open(gmailComposeUrl({
+                to: $('#fuTo').value.trim(),
+                subject: $('#fuSubject').value.trim(),
+                body: $('#fuBody').value
+            }), '_blank', 'noopener');
+            markFuPending(id, 'gmail');
+            closeFu();
+            toast('Opened in Gmail. Once you send it, the lead logs it automatically.');
+            render();
+        });
+        function fuTplLoad(stage) {
+            const t = fuTemplates()[stage];
+            $('#fuTplStage').value = stage;
+            $('#fuTplSubject').value = t.subject;
+            $('#fuTplBody').value = t.body;
+        }
+        $('#fuTplStage').addEventListener('change', e => fuTplLoad(e.target.value));
+        $('#fuTplReset').addEventListener('click', () => {
+            const st = $('#fuTplStage').value;
+            $('#fuTplSubject').value = FU_DEFAULT[st].subject;
+            $('#fuTplBody').value = FU_DEFAULT[st].body;
+        });
+        $('#fuTplForm').addEventListener('submit', e => {
+            e.preventDefault();
+            let v = {};
+            try {
+                v = JSON.parse(localStorage.getItem(FU_TPL_KEY) || '{}');
+            } catch (err) {}
+            v[$('#fuTplStage').value] = {
+                subject: $('#fuTplSubject').value.trim() || FU_DEFAULT[$('#fuTplStage').value].subject,
+                body: $('#fuTplBody').value.trim() ? $('#fuTplBody').value : FU_DEFAULT[$('#fuTplStage').value].body
+            };
+            localStorage.setItem(FU_TPL_KEY, JSON.stringify(v));
+            toast(FU_NAME[$('#fuTplStage').value] + ' email saved.');
+        });
+
         // "/" jumps to the search box on the current tab
         document.addEventListener('keydown', e => {
             if (e.key !== '/' || !P.started || e.metaKey || e.ctrlKey || e.altKey)
@@ -12042,6 +12806,7 @@
                     P.people = P.people.filter(v => v.id !== p.id);
                     setDeact(p.id, null);
                     toast((p.name || p.email || 'An account') + ' was deleted after 10 days deactivated.');
+                    addNotice((p.name || p.email || 'An account') + ' was deleted automatically after 10 days deactivated.', 'team');
                     $('#acList')._h = null;
                     renderTeam();
                 } catch (e) {
