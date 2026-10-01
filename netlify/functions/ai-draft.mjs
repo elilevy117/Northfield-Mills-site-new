@@ -23,7 +23,7 @@ Rules:
 - Use only facts in the context. Never invent prices, dates, meetings, products, numbers or earlier conversations.
 - If there is an earlier email excerpt, follow on from it naturally without quoting it.
 - "Follow-up #1" is a friendly nudge. "Follow-up #2" adds a little more reason to reply. "Final follow-up" politely closes the loop and leaves the door open.
-- Sign off with the sender's name on one line and "Northfield Mills" on the next.
+- Sign-off: if has_signature is true, end with "Best," (or a similar sign-off) on its own line and write nothing after it, because the sender's email signature is added automatically. Otherwise sign off with the sender's name on one line and "Northfield Mills" on the next.
 - Subject: short, plain, no "Re:".
 
 Reply with JSON only: {"subject": "...", "body": "..."}`;
@@ -36,7 +36,7 @@ Rules:
 - Keep it as short as the message allows; usually under 180 words unless the instructions ask for more.
 - Greet the recipient by first name if one is given; otherwise use "Hi there," (or "Hello," for a formal tone).
 - Use only facts from the instructions and context. Never invent prices, dates, meetings, products, numbers or earlier conversations.
-- Sign off with the sender's name on one line and "Northfield Mills" on the next.
+- Sign-off: if has_signature is true, end with "Best," (or a similar sign-off) on its own line and write nothing after it, because the sender's email signature is added automatically. Otherwise sign off with the sender's name on one line and "Northfield Mills" on the next.
 - Subject: short and plain. If a subject is already given, return it unchanged.
 
 Reply with JSON only: {"subject": "...", "body": "..."}`;
@@ -71,6 +71,7 @@ export const handler = async (event, context) => {
     recipient_company: clip(d.company, 120),
     subject: clip(d.subject, 200),
     sender_name: clip(d.myName, 80) || 'The Northfield Mills team',
+    has_signature: d.hasSignature === true,
   } : {
     follow_up: clip(d.stage, 40) || 'Follow-up #1',
     contact_name: name,
@@ -82,6 +83,7 @@ export const handler = async (event, context) => {
     latest_email_excerpt: clip(d.lastSnippet, 1200),
     notes: clip(d.notes, 800),
     history: (Array.isArray(d.history) ? d.history : []).slice(-6).map((h) => clip(h, 140)),
+    has_signature: d.hasSignature === true,
   };
 
   // Netlify stops functions after 10 seconds. Give OpenAI 8.5 so we can still answer with a clear message.
