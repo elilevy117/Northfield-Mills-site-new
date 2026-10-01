@@ -5046,6 +5046,126 @@
         .ax-panel {
             margin-left: 0
         }
+    }/* ---------- LEADS: ID spacing + company contacts ---------- */
+
+    #lList .rowi {
+        grid-template-columns: 150px minmax(0, 1fr) 130px 96px 110px 90px;
+        gap: 12px 20px
+    }
+
+    #lList .rowi .num {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis
+    }
+
+    @media (max-width: 980px) {
+        #lList .rowi {
+            grid-template-columns: 136px minmax(0, 1fr) 110px 100px
+        }
+    }
+
+    @media (max-width: 820px) {
+        #lList .rowi {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 6px 10px
+        }
+    }
+
+    .lead-idline {
+        margin: -4px 0 12px;
+        font-size: 13px;
+        color: var(--muted)
+    }
+
+    .lead-idline b {
+        color: var(--ink);
+        font-weight: 600
+    }
+
+    .lead-primary {
+        align-self: end;
+        padding-bottom: 12px
+    }
+
+    .lc-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px
+    }
+
+    .lc-top b {
+        color: var(--ink);
+        font-weight: 600
+    }
+
+    .lc-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 0;
+        border-top: 1px solid #f1e9dc
+    }
+
+    .lc-row.cur {
+        background: #fcf8f1;
+        margin: 0 -10px;
+        padding: 12px 10px;
+        border-radius: 10px
+    }
+
+    .lc-main {
+        min-width: 0
+    }
+
+    .lc-main b {
+        display: block;
+        color: var(--ink);
+        font-weight: 600
+    }
+
+    .lc-main small {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        overflow-wrap: anywhere
+    }
+
+    .lc-main small a {
+        color: var(--red)
+    }
+
+    .lc-main .lc-notes {
+        margin-top: 3px;
+        white-space: pre-line
+    }
+
+    .lc-prim {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #f4e6d4;
+        color: #8a4b22;
+        font-size: 11.5px;
+        font-weight: 600;
+        vertical-align: 1px
+    }
+
+    .lc-acts {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        flex: none
+    }/* ---------- ACCOUNTS: delete ---------- */
+
+    .ac-del {
+        color: var(--red) !important;
+        font-size: 13px
     }
     </style>
 </head>
@@ -6495,9 +6615,19 @@
             <div class="pop nt" role="dialog" aria-modal="true" aria-labelledby="leadTitle">
                 <button class="pop-close" type="button" id="leadClose" aria-label="Close">×</button>
                 <h2 id="leadTitle">Add lead</h2>
+                <p class="lead-idline" id="leadIdLine"></p>
                 <div class="chips lead-tabs" id="leadTabs" role="tablist">
                     <button type="button" data-lt="details" class="on">Details</button>
                     <button type="button" data-lt="activity">Email activity</button>
+                    <button type="button" data-lt="company">Company contacts</button>
+                </div>
+                <div id="leadCompanyView" hidden>
+                    <div class="lc-top">
+                        <b id="lcHead"></b>
+                        <button class="sbtn" type="button" id="lcAdd">+ Add contact</button>
+                    </div>
+                    <div id="lcList"></div>
+                    <p class="p-muted" style="margin:10px 0 0;font-size:13px">Each contact is its own lead with its own Lead ID, history and follow-ups. They’re grouped here because they work at the same company.</p>
                 </div>
                 <div id="leadActivity" hidden>
                     <div class="la-top">
@@ -6552,6 +6682,16 @@
                         <label class="fld">
                             <span>Last contact</span>
                             <input id="leadLast" type="date">
+                        </label>
+                    </div>
+                    <div class="row2">
+                        <label class="fld">
+                            <span>LinkedIn</span>
+                            <input id="leadLinkedin" maxlength="200" placeholder="linkedin.com/in/…">
+                        </label>
+                        <label class="check lead-primary">
+                            <input type="checkbox" id="leadPrimary">
+                            <span>Primary contact for this company</span>
                         </label>
                     </div>
                     <label class="fld">
@@ -7734,6 +7874,13 @@
                     api.refresh();
                     return;
                 }
+                if (action === 'delete') {
+                    await apiFetch('accounts/' + encodeURIComponent(payload.userId), {
+                        method: 'DELETE'
+                    });
+                    api.refresh();
+                    return;
+                }
             },
             async setRole(id, role) {
                 if (MODE !== 'netlify')
@@ -8192,6 +8339,8 @@
                         v.areas = body.areas;
                     if (body.status !== undefined)
                         v.status = body.status;
+                    if (body.deactivatedAt !== undefined)
+                        v.deactivatedAt = body.deactivatedAt;
                     v.updatedAt = nowIso();
                 }
                 await ref.set(v);
@@ -8283,9 +8432,17 @@
             }
         }
         // staff pick up changes an admin makes without signing out again
+        const onLeave = () => !!(P.me && (AX.people[P.me.id] || {}).status === 'leave');
         setInterval(() => {
             if (P.started && !document.hidden)
-                loadAccess().then(() => render());
+                loadAccess().then(() => {
+                    if (onLeave()) {
+                        endSession('leave');
+                        return;
+                    }
+                    render();
+                    purgeDeactivated();
+                });
         }, 60000);
         const TAB_NAMES = {
             overview: 'Overview',
@@ -8441,7 +8598,7 @@
             } catch (e) {}
             lgNext = 'signin';
             show('login', true);
-            setTimeout(() => lgSay('lgNote', reason === 'idle' ? 'You were signed out after 10 minutes of inactivity. Sign in again to continue.' : reason === 'expired' ? 'Your session ended. Sign in again to continue.' : 'You’re signed out.', reason === 'manual' ? 'ok' : 'err'), 30);
+            setTimeout(() => lgSay('lgNote', reason === 'idle' ? 'You were signed out after 10 minutes of inactivity. Sign in again to continue.' : reason === 'expired' ? 'Your session ended. Sign in again to continue.' : reason === 'leave' ? 'Your account is on leave, so portal access is paused. Ask an admin to set you back to Active.' : 'You’re signed out.', reason === 'manual' ? 'ok' : 'err'), 30);
         }
         setInterval(() => {
             if (P.started && !sessionFresh())
@@ -8526,9 +8683,18 @@
                 });
                 portalEl.classList.toggle('is-admin', isAdmin());
                 await Promise.race([loadAccess(), new Promise(r => setTimeout(r, 4000))]);
+                if (onLeave()) {
+                    P.started = false;
+                    try {
+                        await api.signOut();
+                    } catch (e) {}
+                    gate('Your account is on leave', 'Portal access is paused while you’re on leave. Your account and information are kept. Ask an admin to set you back to Active.');
+                    return;
+                }
                 markSeen();
                 portalEl.classList.add('ready');
                 applyAccess();
+                setTimeout(purgeDeactivated, 3000);
                 $('#pSignOut').hidden = false;
                 $('#pMe').innerHTML = `${avatarHtml(me.id, 34)}<div><b></b><small>${isAdmin() ? 'Admin' : 'Staff'}</small></div>`;
                 $('#pMe b').textContent = myDisplayName();
@@ -10188,6 +10354,9 @@
             document.querySelectorAll('#leadTabs button').forEach(b => b.classList.toggle('on', b.dataset.lt === t));
             $('#leadForm').hidden = t !== 'details';
             $('#leadActivity').hidden = t !== 'activity';
+            $('#leadCompanyView').hidden = t !== 'company';
+            if (t === 'company')
+                renderCompanyContacts();
             if (t === 'activity') {
                 renderLeadActivity();
                 const x = getLeads().find(v => String(v.id) === $('#leadId').value);
@@ -10235,6 +10404,321 @@
             $('#leadNotes').value = note || '';
             setTimeout(() => (c.company ? $('#leadStatus') : $('#leadCompany')).focus(), 60);
         }
+
+        // ---------- lead companies: grouping + matching ----------
+        // Each lead stays its own record (own Lead ID, history, follow-ups). Leads at the same company share a companyId.
+        const COMPANIES_KEY = 'nm_lead_companies';
+        function getCompanies() {
+            try {
+                return JSON.parse(localStorage.getItem(COMPANIES_KEY) || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+        function putCompanies(v) {
+            localStorage.setItem(COMPANIES_KEY, JSON.stringify(v));
+        }
+        const CO_SUFFIX = new Set(['llc', 'inc', 'incorporated', 'ltd', 'limited', 'corp', 'corporation', 'co', 'company', 'gmbh', 'plc', 'llp', 'lp', 'pllc', 'pc', 'sa', 'ag', 'bv', 'nv', 'pty', 'srl', 'sarl', 'ab', 'oy', 'kg']);
+        // "Whole Alternatives, L.L.C." -> "whole alternatives"
+        function normCo(v) {
+            const w = String(v || '').toLowerCase().replace(/&/g, ' and ').replace(/['’`]/g, '').replace(/\bl\.\s?l\.\s?c\b\.?/g, 'llc').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+            if (w[0] === 'the' && w.length > 1)
+                w.shift();
+            while (w.length > 1 && (CO_SUFFIX.has(w[w.length - 1]) || w[w.length - 1] === 'and'))
+                w.pop();
+            return w.join(' ');
+        }
+        const coKey = v => normCo(v).replace(/ /g, '');
+        function hostOf(v) {
+            const h = String(v || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[\/?#:\s]/)[0];
+            return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h) ? h : '';
+        }
+        function baseDomain(h) {
+            const p = h.split('.');
+            if (p.length <= 2)
+                return h;
+            const sld = p[p.length - 2];
+            return ['co', 'com', 'org', 'net', 'ac', 'gov'].includes(sld) && p[p.length - 1].length === 2 ? p.slice(-3).join('.') : p.slice(-2).join('.');
+        }
+        function leadDomains(x) {
+            const em = String(x.email || '').toLowerCase().split('@')[1] || '';
+            return [...new Set([hostOf(x.website), em && !FREE_MAIL.has(em) ? hostOf(em) : ''].filter(Boolean).map(baseDomain))];
+        }
+        function lev(a, b) {
+            if (a === b)
+                return 0;
+            if (!a.length || !b.length)
+                return Math.max(a.length, b.length);
+            let prev = Array.from({
+                length: b.length + 1
+            }, (_, i) => i);
+            for (let i = 1; i <= a.length; i++) {
+                const cur = [i];
+                for (let j = 1; j <= b.length; j++)
+                    cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+                prev = cur;
+            }
+            return prev[b.length];
+        }
+        // Returns {kind:'exact'|'auto'|'ask', co} or null. Never decides on character count alone.
+        function matchCompany(name, domains, skipId) {
+            const nk = coKey(name);
+            if (!nk)
+                return null;
+            const cos = getCompanies().filter(c => c.id !== skipId);
+            const conflicts = c => domains.length && (c.domains || []).length && !domains.some(d => c.domains.includes(d));
+            // same domain: groups on its own only when the names also agree (same name or a small misspelling); otherwise ask
+            const byDomain = cos.find(c => domains.some(d => (c.domains || []).includes(d)));
+            if (byDomain) {
+                const close = (byDomain.keys || []).some(k => {
+                    const d = lev(nk, k);
+                    // extra words ("Whole Alternatives USA") aren't a misspelling
+                    return k === nk || (d <= 3 && d / Math.max(nk.length, k.length) <= .2 && !nk.includes(k) && !k.includes(nk));
+                });
+                return {
+                    kind: close && !(byDomain.notSame || []).includes(nk) ? 'exact' : (byDomain.notSame || []).includes(nk) ? null : 'ask',
+                    co: byDomain
+                };
+            }
+            const byName = cos.find(c => (c.keys || []).includes(nk) && !(c.notSame || []).includes(nk));
+            if (byName)
+                return {
+                    kind: conflicts(byName) ? 'ask' : 'exact',
+                    co: byName
+                };
+            let best = null;
+            const words = new Set(normCo(name).split(' '));
+            cos.forEach(c => {
+                if ((c.notSame || []).includes(nk))
+                    return;
+                // one name contains the other plus extra words ("Whole Alternatives" / "Whole Alternatives Foods Distribution",
+                // "WholeAlternatives USA"): always ask, never group on its own. Short fragments ("Bake" / "Bakers") don't count.
+                const cw = normCo(c.name).split(' ');
+                const wordsIn = cw.length && (cw.every(w => words.has(w)) || [...words].every(w => cw.includes(w)));
+                (c.keys || []).forEach(k => {
+                    const d = lev(nk, k),
+                        L = Math.max(nk.length, k.length),
+                        contains = nk !== k && (wordsIn || (Math.min(nk.length, k.length) >= 5 && (nk.includes(k) || k.includes(nk))));
+                    if (contains || (d <= 3 && d / L <= .3)) {
+                        const score = d / L;
+                        if (!best || (contains && !best.contains) || (contains === best.contains && score < best.score))
+                            best = {
+                                co: c,
+                                d,
+                                score,
+                                contains
+                            };
+                    }
+                });
+            });
+            if (!best)
+                return null;
+            const c = best.co;
+            // supporting evidence: a website/email domain that spells the other company's name
+            // supporting evidence must come from the new lead: its website/email domain spells the existing company's name
+            const support = domains.some(d => (c.keys || []).some(k => lev(d.split('.')[0].replace(/-/g, ''), k) <= 1));
+            // spelling differences only group on their own when a domain backs them up; otherwise ask
+            const auto = !best.contains && !conflicts(c) && best.d <= 3 && best.score <= .2 && support;
+            return {
+                kind: auto ? 'auto' : 'ask',
+                co: c
+            };
+        }
+        function joinCompany(cos, c, x) {
+            const k = coKey(x.company);
+            c.keys = [...new Set([...(c.keys || []), k].filter(Boolean))];
+            const cd = c.domains || [];
+            const ld = leadDomains(x);
+            if (!cd.length || ld.some(d => cd.includes(d)))
+                c.domains = [...new Set([...cd, ...ld])];
+            const i = cos.findIndex(v => v.id === c.id);
+            if (i >= 0)
+                cos[i] = c;
+            else
+                cos.push(c);
+        }
+        function newCompany(x) {
+            return {
+                id: 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                name: x.company,
+                keys: [coKey(x.company)].filter(Boolean),
+                domains: leadDomains(x),
+                notSame: [],
+                createdAt: nowIso()
+            };
+        }
+        // Works out which company a saved lead belongs to. May ask; returns a message to show.
+        function assignCompany(x, old, leads) {
+            let cos = getCompanies();
+            const nk = coKey(x.company);
+            const oldCo = old && old.companyId ? cos.find(c => c.id === old.companyId) : null;
+            if (oldCo && (oldCo.keys || []).includes(nk)) {
+                x.companyId = oldCo.id;
+                x.company = oldCo.name;
+                joinCompany(cos, oldCo, x);
+                putCompanies(cos);
+                return '';
+            }
+            const sole = oldCo && !leads.some(v => v.companyId === oldCo.id && String(v.id) !== String(x.id));
+            const m = matchCompany(x.company, leadDomains(x), sole ? oldCo.id : null);
+            const typed = x.company;
+            let co = null,
+                msg = '';
+            if (m && (m.kind === 'exact' || m.kind === 'auto'))
+                co = m.co;
+            else if (m && m.kind === 'ask') {
+                if (confirm('Possible company match: ' + typed + ' and ' + m.co.name + '. Are these the same company?'))
+                    co = m.co;
+                else {
+                    m.co.notSame = [...new Set([...(m.co.notSame || []), nk])];
+                    joinCompany(cos, m.co, {
+                        company: m.co.name
+                    });
+                }
+            }
+            if (co) {
+                const others = leads.filter(v => v.companyId === co.id && String(v.id) !== String(x.id)).length;
+                x.companyId = co.id;
+                x.company = co.name;
+                joinCompany(cos, co, {
+                    ...x,
+                    company: typed
+                });
+                msg = typed.trim() !== co.name.trim()
+                ? 'Company matched: ' + typed + ' has been grouped under ' + co.name + '.'
+                : others ? 'Grouped under ' + co.name + ' with ' + others + ' other contact' + (others === 1 ? '' : 's') + '.' : '';
+            } else if (sole) {
+                // the only contact at that company renamed it: keep the same company record
+                oldCo.name = x.company;
+                oldCo.keys = [nk].filter(Boolean);
+                oldCo.domains = leadDomains(x);
+                x.companyId = oldCo.id;
+                joinCompany(cos, oldCo, x);
+            } else {
+                const c = newCompany(x);
+                cos.push(c);
+                x.companyId = c.id;
+            }
+            putCompanies(cos);
+            return msg;
+        }
+        // Drop companies nobody belongs to any more
+        function pruneCompanies(leads) {
+            const used = new Set(leads.map(v => v.companyId).filter(Boolean));
+            const cos = getCompanies();
+            const keep = cos.filter(c => used.has(c.id));
+            if (keep.length !== cos.length)
+                putCompanies(keep);
+        }
+        // Existing leads saved before company grouping: group only exact/obvious matches, silently, then say so once
+        function ensureCompanies() {
+            const leads = getLeads();
+            const todo = leads.filter(v => !v.companyId && v.company);
+            if (!todo.length)
+                return;
+            const cos = getCompanies();
+            let grouped = 0;
+            todo.slice().reverse().forEach(x => {
+                const nk = coKey(x.company),
+                    ld = leadDomains(x);
+                const conflicts = c => ld.length && (c.domains || []).length && !ld.some(d => c.domains.includes(d));
+                const c = cos.find(c => ld.some(d => (c.domains || []).includes(d))) || cos.find(c => (c.keys || []).includes(nk) && !conflicts(c));
+                if (c) {
+                    if (leads.some(v => v.companyId === c.id))
+                        grouped++;
+                    x.companyId = c.id;
+                    joinCompany(cos, c, x);
+                } else {
+                    const n = newCompany(x);
+                    cos.push(n);
+                    x.companyId = n.id;
+                }
+            });
+            putCompanies(cos);
+            putLeads(leads);
+            if (grouped)
+                toast(grouped + ' existing lead' + (grouped === 1 ? ' was' : 's were') + ' grouped with others at the same company.');
+        }
+        const linkUrl = v => /^https?:\/\//i.test(v) ? v : 'https://' + String(v).replace(/^\/+/, '');
+        function companyLeads(companyId, leads) {
+            return (leads || getLeads()).filter(v => companyId && v.companyId === companyId);
+        }
+        function renderCompanyContacts() {
+            const id = $('#leadId').value,
+                leads = getLeads(),
+                me = leads.find(v => String(v.id) === String(id));
+            if (!me || !me.companyId) {
+                $('#lcHead').textContent = '';
+                $('#lcAdd').hidden = true;
+                $('#lcList').innerHTML = '<div class="empty">Save this lead first to see everyone at its company.</div>';
+                return;
+            }
+            const co = getCompanies().find(c => c.id === me.companyId);
+            const ppl = companyLeads(me.companyId, leads).sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0) || String(a.contact || a.email || '').localeCompare(String(b.contact || b.email || '')));
+            $('#lcAdd').hidden = false;
+            $('#lcHead').textContent = (co ? co.name : me.company) + ' · ' + ppl.length + ' contact' + (ppl.length === 1 ? '' : 's');
+            $('#lcList').innerHTML = ppl.map(v => {
+                const cur = String(v.id) === String(id);
+                return `<div class="lc-row${cur ? ' cur' : ''}"><div class="lc-main"><b>${esc(v.contact || v.email || 'Unnamed contact')}${v.primary ? '<span class="lc-prim">Primary</span>' : ''}</b>
+                                                    <small>${esc([v.title, v.email, v.phone].filter(Boolean).join(' · ') || 'No details yet')}</small>
+                                                    ${v.linkedin ? `<small><a href="${esc(linkUrl(v.linkedin))}" target="_blank" rel="noopener">LinkedIn profile</a></small>` : ''}
+                                                    ${v.notes ? `<small class="lc-notes">${esc(v.notes)}</small>` : ''}
+                                                    <small>Lead ID ${esc(v.id)} · ${esc(leadLabel(v.status))}</small></div>
+                                                    <div class="lc-acts">${v.primary ? '' : `<button class="sbtn" type="button" data-lc-primary="${esc(v.id)}">Make primary</button>`}${cur ? '' : `<button class="sbtn" type="button" data-lc-open="${esc(v.id)}">Open</button>`}</div></div>`;
+            }).join('');
+        }
+        function setPrimary(id) {
+            const leads = getLeads(),
+                x = leads.find(v => String(v.id) === String(id));
+            if (!x || !x.companyId)
+                return;
+            leads.forEach(v => {
+                if (v.companyId === x.companyId)
+                    v.primary = String(v.id) === String(id);
+            });
+            putLeads(leads);
+            if ($('#leadId').value === String(id))
+                $('#leadPrimary').checked = true;
+            else if ($('#leadId').value)
+                $('#leadPrimary').checked = false;
+            renderCompanyContacts();
+            renderLeadIdLine();
+            render();
+            toast((x.contact || x.email || 'This contact') + ' is now the primary contact at ' + x.company + '.');
+        }
+        function renderLeadIdLine() {
+            const id = $('#leadId').value,
+                leads = getLeads(),
+                x = leads.find(v => String(v.id) === String(id));
+            if (!x) {
+                $('#leadIdLine').innerHTML = 'A Lead ID is assigned when you save.';
+                return;
+            }
+            const n = companyLeads(x.companyId, leads).length;
+            $('#leadIdLine').innerHTML = `Lead ID <b>${esc(x.id)}</b>${x.company ? ' · ' + esc(x.company) : ''}${n > 1 ? ' · ' + n + ' contacts at this company' : ''}${x.primary ? ' · Primary contact' : ''}`;
+        }
+        $('#lcAdd').addEventListener('click', () => {
+            const cur = getLeads().find(v => String(v.id) === $('#leadId').value);
+            if (!cur)
+                return;
+            openLead();
+            $('#leadCompany').value = cur.company || '';
+            $('#leadWebsite').value = cur.website || '';
+            $('#leadIdLine').innerHTML = 'New contact at <b>' + esc(cur.company || '') + '</b>. A Lead ID is assigned when you save.';
+            setTimeout(() => $('#leadContact').focus(), 60);
+        });
+        document.addEventListener('click', e => {
+            const pr = e.target.closest('[data-lc-primary]');
+            if (pr) {
+                setPrimary(pr.dataset.lcPrimary);
+                return;
+            }
+            const op = e.target.closest('[data-lc-open]');
+            if (op) {
+                openLead(op.dataset.lcOpen);
+                setLeadTab('company');
+            }
+        });
 
         // ---------- manufacturer leads ----------
         const LEADS_KEY = 'nm_manufacturer_leads';
@@ -10300,16 +10784,20 @@
             return `<span class="pill ${cls}">${esc(leadLabel(s))}</span>`;
         }
         function renderLeads() {
+            ensureCompanies();
             const leads = getLeads(),
                 q = ($('#lSearch')?.value || '').trim().toLowerCase();
             let rows = leads.filter(x => leadFilter === 'all' ? true : leadFilter === 'active' ? x.status !== 'closed' : x.status === leadFilter);
             if (q)
-                rows = rows.filter(x => [x.company, x.contact, x.title, x.email, x.website, x.phone, x.next, x.notes].join(' ').toLowerCase().includes(q));
+                rows = rows.filter(x => [x.company, x.contact, x.title, x.email, x.website, x.phone, x.linkedin, x.next, x.notes, x.id].join(' ').toLowerCase().includes(q));
             const box = $('#lList');
             if (!box)
                 return;
             put(box, rows.length ? `<div class="rowi head"><span>Lead</span><span>Company</span><span class="c-type">Contact</span><span class="c-pr">Next step</span><span class="c-stat">Status</span><span class="when">Last contact</span></div>` +
-            rows.map(x => `<div class="rowi" data-lead-open="${esc(x.id)}"><span class="num">${esc(x.id)}</span><span class="subj"><b>${esc(x.company)}</b><small>${esc(x.website || x.email || '')}</small></span><span class="c-type"><span class="type" title="${esc([x.contact, x.title].filter(Boolean).join(', '))}">${esc(x.contact || '—')}${x.title ? ' · ' + esc(x.title) : ''}</span></span><span class="pr c-pr">${esc(x.next || '—')}<small class="lf-due ${reminderClass(x.reminder)}">${esc(reminderText(x))}</small></span><span class="c-stat">${leadPill(x.status)}</span><span class="when">${esc(x.last || '—')}</span></div>`).join('')
+            rows.map(x => {
+                const n = companyLeads(x.companyId, leads).length;
+                return `<div class="rowi" data-lead-open="${esc(x.id)}"><span class="num" title="Lead ID ${esc(x.id)}">${esc(x.id)}</span><span class="subj"><b>${esc(x.company)}</b><small>${esc([x.website || x.email || '', n > 1 ? n + ' contacts' : ''].filter(Boolean).join(' · '))}</small></span><span class="c-type"><span class="type" title="${esc([x.contact, x.title, x.primary && n > 1 ? 'Primary contact' : ''].filter(Boolean).join(', '))}">${x.primary && n > 1 ? '★ ' : ''}${esc(x.contact || '—')}${x.title ? ' · ' + esc(x.title) : ''}</span></span><span class="pr c-pr">${esc(x.next || '—')}<small class="lf-due ${reminderClass(x.reminder)}">${esc(reminderText(x))}</small></span><span class="c-stat">${leadPill(x.status)}</span><span class="when">${esc(x.last || '—')}</span></div>`;
+            }).join('')
             : `<div class="empty">${leads.length ? 'No leads match.' : 'No leads yet. Use “Add lead” after your first manufacturer outreach.'}</div>`);
         }
         function openLead(id) {
@@ -10323,11 +10811,14 @@
             $('#leadPhone').value = x?.phone || '';
             $('#leadEmail').value = x?.email || '';
             $('#leadWebsite').value = x?.website || '';
+            $('#leadLinkedin').value = x?.linkedin || '';
+            $('#leadPrimary').checked = !!x?.primary;
             $('#leadLast').value = x?.last || '';
             $('#leadStage').value = x?.stage || 'initial';
             $('#leadNext').value = x?.next || '';
             $('#leadNotes').value = x?.notes || '';
             renderLeadHistory(x);
+            renderLeadIdLine();
             setLeadTab('details');
             $('#leadTabs').hidden = false;
             $('#leadDelete').hidden = !x;
@@ -10379,6 +10870,8 @@
                 phone: $('#leadPhone').value.trim(),
                 email: newEmail,
                 website: $('#leadWebsite').value.trim(),
+                linkedin: $('#leadLinkedin').value.trim(),
+                primary: $('#leadPrimary').checked,
                 last: $('#leadLast').value,
                 stage: $('#leadStage').value,
                 reminder: old?.reminder || '',
@@ -10391,14 +10884,23 @@
                 delete x.gmailThreads;
                 delete x.gmailSyncedAt;
             }
+            const coMsg = assignCompany(x, old, leads);
+            if (x.primary)
+                leads.forEach(v => {
+                    if (v.companyId === x.companyId && String(v.id) !== String(id))
+                        v.primary = false;
+                });
             const i = leads.findIndex(v => String(v.id) === String(id));
             if (i >= 0)
                 leads[i] = x;
             else
                 leads.unshift(x);
             putLeads(leads);
+            pruneCompanies(leads);
             closeLead();
             render();
+            if (coMsg)
+                toast(coMsg);
             if (x.email && canUse('gmail') && MODE === 'netlify')
                 queueLeadSync(x.id);
         });
@@ -10488,7 +10990,9 @@
             const id = $('#leadId').value;
             if (!id || !confirm('Delete this lead?'))
                 return;
-            putLeads(getLeads().filter(x => String(x.id) !== String(id)));
+            const rest = getLeads().filter(x => String(x.id) !== String(id));
+            putLeads(rest);
+            pruneCompanies(rest);
             closeLead();
             render();
         });
@@ -11066,8 +11570,8 @@
                 done: 'Sequence complete'
             };
             try {
-                await downloadFile(`northfield-leads-${stamp()}.csv`, csv(['company', 'contact', 'job_title', 'email', 'phone', 'website', 'status', 'stage', 'last_contact', 'next_follow_up', 'next_step', 'notes'],
-                leads.map(x => [x.company, x.contact, x.title, x.email, x.phone, x.website, leadLabel(x.status), stageName[x.stage] || x.stage || '', x.last, x.reminder, x.next, x.notes])), 'text/csv;charset=utf-8');
+                await downloadFile(`northfield-leads-${stamp()}.csv`, csv(['lead_id', 'company', 'contact', 'primary_contact', 'job_title', 'email', 'phone', 'linkedin', 'website', 'status', 'stage', 'last_contact', 'next_follow_up', 'next_step', 'notes'],
+                leads.map(x => [x.id, x.company, x.contact, x.primary ? 'Yes' : '', x.title, x.email, x.phone, x.linkedin || '', x.website, leadLabel(x.status), stageName[x.stage] || x.stage || '', x.last, x.reminder, x.next, x.notes])), 'text/csv;charset=utf-8');
                 toast(leads.length + ' leads exported.');
             }
             catch (e) {
@@ -11327,7 +11831,79 @@
             past: false,
             open: null
         };
-        // Status: Deactivated (blocked) > On leave (set by an admin) > Active (has signed in) / Invited (hasn't yet)
+        // Deactivation time: kept in the access record, with a copy in this browser in case the server drops the field
+        const DEACT_KEY = 'nm_deactivated_at';
+        const DELETE_AFTER_MS = 10 * 24 * 60 * 60 * 1000;
+        function deactMap() {
+            try {
+                return JSON.parse(localStorage.getItem(DEACT_KEY) || '{}');
+            } catch (e) {
+                return {};
+            }
+        }
+        function setDeact(id, iso) {
+            const m = deactMap();
+            if (iso)
+                m[id] = iso;
+            else
+                delete m[id];
+            try {
+                localStorage.setItem(DEACT_KEY, JSON.stringify(m));
+            } catch (e) {}
+        }
+        const deactivatedAtOf = p => (AX.people[p.id] || {}).deactivatedAt || deactMap()[p.id] || '';
+        const lastSeenOf = p => (AX.people[p.id] || {}).lastSeen || p.lastSeen || p.lastLogin || p.last_login || '';
+        function activityLine(p) {
+            const seen = lastSeenOf(p),
+                last = seen ? 'Last active ' + ago(seen) : (P.me && p.id === P.me.id) ? 'Active now' : 'Never signed in';
+            if (p.active === false) {
+                const at = deactivatedAtOf(p);
+                if (!at)
+                    return 'Deactivated · ' + last;
+                const left = Math.ceil((Date.parse(at) + DELETE_AFTER_MS - Date.now()) / 86400000);
+                return 'Deactivated ' + fmt(at) + ' · deleted ' + (left <= 0 ? 'today' : left === 1 ? 'in 1 day' : 'in ' + left + ' days') + ' · ' + last;
+            }
+            return last;
+        }
+        // 10 days after deactivation (not last sign-in), the account is deleted. Runs while an admin has the portal open.
+        const PURGING = new Set();
+        async function purgeDeactivated() {
+            if (!P.started || !isAdmin() || !api.usesPasswords)
+                return;
+            for (const p of P.people.slice()) {
+                if (p.active !== false || (P.me && p.id === P.me.id) || PURGING.has(p.id))
+                    continue;
+                const at = deactivatedAtOf(p);
+                if (!at) {
+                    // deactivated before this was tracked: start the 10 days now
+                    const now = nowIso();
+                    setDeact(p.id, now);
+                    if (AX.available)
+                        saveAccess(p.id, {
+                            deactivatedAt: now
+                        }).catch(() => {});
+                    continue;
+                }
+                if (Date.now() - Date.parse(at) < DELETE_AFTER_MS)
+                    continue;
+                PURGING.add(p.id);
+                try {
+                    await api.adminUsers('delete', {
+                        userId: p.id
+                    });
+                    P.people = P.people.filter(v => v.id !== p.id);
+                    setDeact(p.id, null);
+                    toast((p.name || p.email || 'An account') + ' was deleted after 10 days deactivated.');
+                    $('#acList')._h = null;
+                    renderTeam();
+                } catch (e) {
+
+                } finally {
+                    PURGING.delete(p.id);
+                }
+            }
+        }
+        // Status: Deactivated (blocked) > On leave (set by an admin) > Active (set by an admin, or has signed in) / Invited (hasn't yet)
         function statusOf(p) {
             if (p.active === false)
                 return {
@@ -11342,6 +11918,13 @@
                     label: 'On leave',
                     cls: 'st-waiting',
                     sub: r.lastSeen ? 'Last signed in ' + ago(r.lastSeen) : ''
+                };
+            if (r.status === 'active')
+                return {
+                    k: 'active',
+                    forced: true,
+                    label: 'Active',
+                    cls: 'st-resolved'
                 };
             if (AX.available === false)
                 return {
@@ -11438,13 +12021,15 @@
                     canEdit = admin && !self,
                     st = statusOf(p),
                     isAdm = p.role === 'admin';
-                const role = canEdit && api.usesPasswords
+                // admins can't change another admin's role or details, only their status
+                const role = canEdit && api.usesPasswords && !isAdm
                 ? `<select data-ac-role="${esc(p.id)}" aria-label="Role for ${esc(p.name || p.email || 'team member')}"><option value="staff"${!isAdm ? ' selected' : ''}>Staff</option><option value="admin"${isAdm ? ' selected' : ''}>Admin</option></select>`
                 : roleBadge(p.role);
                 // status: automatic (Active / Invited) unless an admin sets On leave or Deactivated
                 const status = canEdit && (AX.available || api.usesPasswords)
                 ? `<select class="st-sel st-${st.k === 'off' ? 'offsel' : st.k}" data-ac-status="${esc(p.id)}" aria-label="Status for ${esc(p.name || 'team member')}">
-                                                            <option value="auto"${st.k === 'active' || st.k === 'invited' ? ' selected' : ''}>${st.k === 'invited' ? 'Invited' : 'Active'}</option>
+                                                            <option value="auto"${(st.k === 'active' && !st.forced) || st.k === 'invited' ? ' selected' : ''}>Automatic</option>
+                                                            ${AX.available ? `<option value="active"${st.k === 'active' && st.forced ? ' selected' : ''}>Active</option>` : ''}
                                                             ${AX.available ? `<option value="leave"${st.k === 'leave' ? ' selected' : ''}>On leave</option>` : ''}
                                                             ${api.usesPasswords ? `<option value="off"${st.k === 'off' ? ' selected' : ''}>Deactivated</option>` : ''}</select>`
                 : `<span class="pill ${st.cls}">${st.label}</span>`;
@@ -11460,8 +12045,8 @@
                 return `<div class="acrow${off ? ' off' : ''}${self ? ' me' : ''}">
                                                         <div class="ac-who">${avatarHtml(p.id, 38)}<div><b>${esc(p.name || p.email || 'Team member')}${self ? '<span class="ac-you">You</span>' : ''}</b><small>${esc([p.jobTitle, p.email].filter(Boolean).join(' · ') || '—')}</small></div></div>
                                                         <span>${role}</span>
-                                                        <span class="ac-st st-cell">${status}${st.sub ? `<small>${esc(st.sub)}</small>` : ''}</span>
-                                                        <div class="acts">${access}</div>${panel}</div>`;
+                                                        <span class="ac-st st-cell">${status}<small>${esc(activityLine(p))}</small></span>
+                                                        <div class="acts">${access}${canEdit && api.usesPasswords && (!isAdm || off) ? `<button class="link ac-del" type="button" data-ac-del="${esc(p.id)}">Delete</button>` : ''}</div>${panel}</div>`;
             }).join('') : `<div class="empty">${q ? 'No one matches “' + esc(q) + '”.' : P.people.length ? 'No one in this group.' : 'No accounts yet. Use “Add person” to add your first team member.'}</div>`);
         }
         $('#acSearch').addEventListener('input', renderTeam);
@@ -11506,7 +12091,7 @@
                 }),
                 to = sel.value,
                 name = (p && p.name) || 'this person';
-            if (to === 'off' && !confirm('Deactivate ' + name + '? They’ll be signed out and blocked right away.')) {
+            if (to === 'off' && !confirm('Deactivate ' + name + '? They’ll be signed out and blocked right away, and the account is deleted automatically after 10 days.')) {
                 $('#acList')._h = null;
                 renderTeam();
                 return;
@@ -11520,6 +12105,12 @@
                     });
                     if (p)
                         p.active = false;
+                    const now = nowIso();
+                    setDeact(id, now);
+                    if (AX.available)
+                        await saveAccess(id, {
+                            deactivatedAt: now
+                        }).catch(() => {});
                 }
                 else {
                     if (was.k === 'off') {
@@ -11530,14 +12121,46 @@
                         if (p)
                             p.active = true;
                     }
+                    setDeact(id, null);
                     if (AX.available)
                         await saveAccess(id, {
-                            status: to === 'leave' ? 'leave' : 'auto'
+                            status: to === 'leave' ? 'leave' : to === 'active' ? 'active' : 'auto',
+                            deactivatedAt: null
                         });
                 }
-                toast(name + ': ' + (to === 'off' ? 'deactivated.' : to === 'leave' ? 'on leave.' : 'status set to automatic.'));
+                toast(name + ': ' + (to === 'off' ? 'deactivated. Deleted automatically in 10 days.' : to === 'leave' ? 'on leave.' : to === 'active' ? 'active.' : 'status set to automatic.'));
             } catch (err) {
                 toast((err && err.message) || 'Couldn’t change the status.');
+            }
+            $('#acList')._h = null;
+            renderTeam();
+        });
+        document.addEventListener('click', async e => {
+            const del = e.target.closest('[data-ac-del]');
+            if (!del || !isAdmin())
+                return;
+            const id = del.dataset.acDel,
+                p = person(id);
+            if (!p || (P.me && id === P.me.id))
+                return;
+            if (p.role === 'admin' && p.active !== false) {
+                toast('Deactivate another admin before deleting their account.');
+                return;
+            }
+            const name = p.name || p.email || 'this person';
+            if (!confirm('Permanently delete ' + name + '’s account? This can’t be undone.'))
+                return;
+            del.disabled = true;
+            try {
+                await api.adminUsers('delete', {
+                    userId: id
+                });
+                P.people = P.people.filter(v => v.id !== id);
+                setDeact(id, null);
+                toast(name + '’s account was deleted.');
+            } catch (err) {
+                del.disabled = false;
+                toast(err && (err.status === 404 || err.status === 405) ? 'This site’s server can’t delete accounts yet: api.mjs needs a DELETE /accounts/:id route.' : (err && err.message) || 'Couldn’t delete the account.');
             }
             $('#acList')._h = null;
             renderTeam();
@@ -11736,6 +12359,12 @@
             if (!sel)
                 return;
             const p = person(sel.dataset.acRole);
+            if (!isAdmin() || (p && p.role === 'admin' && P.me && p.id !== P.me.id)) {
+                toast('Admins can’t change another admin’s role.');
+                $('#acList')._h = null;
+                renderTeam();
+                return;
+            }
             if (sel.value === 'staff' && !confirm('Change ' + ((p && p.name) || 'this person') + ' to Staff? They’ll only be able to open what’s turned on under “Can open”.')) {
                 sel.value = 'admin';
                 return;
