@@ -9133,6 +9133,8 @@
                     return;
                 }
                 markSeen();
+                // Load/migrate shared manufacturer Leads before the portal is shown.
+                await syncLeadsServer();
                 portalEl.classList.add('ready');
                 applyAccess();
                 setTimeout(purgeDeactivated, 3000);
@@ -11340,8 +11342,71 @@
                 return [];
             }
         }
+        let leadsServerReady = false;
+        let leadsSaveTimer = null;
         function putLeads(v) {
+            // Keep a local safety cache so the Leads UI stays synchronous and unchanged.
             localStorage.setItem(LEADS_KEY, JSON.stringify(v));
+            if (MODE === 'netlify' && leadsServerReady) {
+                clearTimeout(leadsSaveTimer);
+                leadsSaveTimer = setTimeout(() => saveLeadsServer(v), 120);
+            }
+        }
+        async function leadsRequest(method, body) {
+            const bearer = await accessToken();
+            if (!bearer)
+                throw new Error('Your portal session ended.');
+            const r = await fetch('/.netlify/functions/leads', {
+                method,
+                headers: {
+                    Authorization: 'Bearer ' + bearer,
+                    'Content-Type': 'application/json'
+                },
+                body: body === undefined ? undefined : JSON.stringify(body)
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok)
+                throw new Error(j.error || 'Couldn’t sync Leads.');
+            return j;
+        }
+        async function saveLeadsServer(v) {
+            try {
+                await leadsRequest('PUT', {
+                    leads: v
+                });
+            } catch (e) {
+                console.warn('Leads server save failed; local safety copy retained.', e);
+            }
+        }
+        async function syncLeadsServer() {
+            if (MODE !== 'netlify')
+                return;
+            const local = getLeads();
+            try {
+                const j = await leadsRequest('GET');
+                const remote = Array.isArray(j.leads) ? j.leads : [];
+                if (j.exists) {
+                    localStorage.setItem(LEADS_KEY, JSON.stringify(remote));
+                } else if (local.length) {
+                    // One-time migration: preserve every existing browser lead.
+                    await leadsRequest('PUT', {
+                        leads: local,
+                        migrateOnlyIfEmpty: true
+                    });
+                    const check = await leadsRequest('GET');
+                    localStorage.setItem(LEADS_KEY, JSON.stringify(Array.isArray(check.leads) ? check.leads : local));
+                } else {
+                    // Establish the shared store even when this browser has no old records.
+                    await leadsRequest('PUT', {
+                        leads: [],
+                        migrateOnlyIfEmpty: true
+                    });
+                }
+                leadsServerReady = true;
+            } catch (e) {
+                // Never destroy or hide the existing browser data if the server is unavailable.
+                console.warn('Leads server unavailable; using local safety copy.', e);
+            }
         }
         function leadLabel(s) {
             return ({
